@@ -141,6 +141,9 @@ fw-shipped-$(CONFIG_YAM) += yam/1200.bin yam/9600.bin
 #fw-shipped-$(CONFIG_FB_MXC_EINK_PANEL) += imx/epdc_E60_V110.fw \
 #                imx/epdc_E60_V220.fw \
 #                imx/epdc_E97_V110.fw \
+#                imx/epdc_ED060SCM.fw \
+#                imx/epdc_ED060REAGL2.fw \
+#                imx/epdc_ED060SCE.fw 
 
 fw-shipped-all := $(fw-shipped-y) $(fw-shipped-m) $(fw-shipped-)
 

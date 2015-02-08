@@ -57,6 +57,7 @@ static struct mxc_pmic pmic_drv_data;
 struct i2c_client *mc13892_client;
 #endif
 
+#if 0
 int pmic_i2c_24bit_read(struct i2c_client *client, unsigned int reg_num,
 			unsigned int *value)
 {
@@ -103,7 +104,9 @@ int pmic_i2c_24bit_write(struct i2c_client *client,
 
 	return ret;
 }
-static pmic_reg_buffer[MXC_PMIC_MAX_REG_NUM];
+#endif
+
+static unsigned int pmic_reg_buffer[MXC_PMIC_MAX_REG_NUM];
 
 int pmic_read(int reg_num, unsigned int *reg_val)
 {
@@ -111,6 +114,8 @@ int pmic_read(int reg_num, unsigned int *reg_val)
 	int ret = 0;
 
 #if 1
+	if (reg_num > MXC_PMIC_MAX_REG_NUM)
+		return PMIC_ERROR;
 	*reg_val = pmic_reg_buffer[reg_num];
 //	printk ("[%s] %s (0x%X, 0x%X)\n",__FILE__,__func__,reg_num,*reg_val);
 #else
@@ -142,6 +147,8 @@ int pmic_write(int reg_num, const unsigned int reg_val)
 
 #if 1
 //	printk ("[%s] %s (0x%X, 0x%X)\n",__FILE__,__func__,reg_num,reg_val);
+	if (reg_num > MXC_PMIC_MAX_REG_NUM)
+		return PMIC_ERROR;
 	pmic_reg_buffer[reg_num] = reg_val;
 	return ret;
 #else

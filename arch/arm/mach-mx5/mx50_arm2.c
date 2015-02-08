@@ -109,6 +109,7 @@ extern int __init mx50_arm2_init_mc13892(void);
 extern struct cpu_wp *(*get_cpu_wp)(int *wp);
 extern void (*set_num_cpu_wp)(int num);
 extern struct dvfs_wp *(*get_dvfs_core_wp)(int *wp);
+extern void __iomem *apll_base;
 static int max17135_regulator_init(struct max17135 *max17135);
 static void mx50_suspend_enter(void);
 static void mx50_suspend_exit(void);
@@ -1189,6 +1190,15 @@ static void mx50_suspend_enter()
 {
 	iomux_v3_cfg_t *p = suspend_enter_pads;
 	int i;
+
+	/* Clear the SELF_BIAS bit and power down
+	 * the band-gap.
+	 */
+	__raw_writel(MXC_ANADIG_REF_SELFBIAS_OFF,
+			apll_base + MXC_ANADIG_MISC_CLR);
+	__raw_writel(MXC_ANADIG_REF_PWD,
+			apll_base + MXC_ANADIG_MISC_SET);
+
 	/* Set PADCTRL to 0 for all IOMUX. */
 	for (i = 0; i < ARRAY_SIZE(suspend_enter_pads); i++) {
 		suspend_exit_pads[i] = *p;
@@ -1203,6 +1213,13 @@ static void mx50_suspend_enter()
 
 static void mx50_suspend_exit()
 {
+	/* Power Up the band-gap and set the SELFBIAS bit. */
+	__raw_writel(MXC_ANADIG_REF_PWD,
+			apll_base + MXC_ANADIG_MISC_CLR);
+	udelay(100);
+	__raw_writel(MXC_ANADIG_REF_SELFBIAS_OFF,
+			apll_base + MXC_ANADIG_MISC_SET);
+
 	mxc_iomux_v3_setup_multiple_pads(suspend_exit_pads,
 			ARRAY_SIZE(suspend_exit_pads));
 }

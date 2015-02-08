@@ -3,6 +3,7 @@
 #include <linux/platform_device.h>
 #include <linux/delay.h>
 #include <linux/io.h>
+#include <linux/input.h>
 #include <mach/hardware.h>
 #include <mach/gpio.h>
 #include <mach/iomux-mx50.h>
@@ -21,16 +22,9 @@
 #include <linux/irq.h>
 #include <linux/freezer.h>
 
-
-//#define NTX_GPIO_KEYS		0
-#ifdef NTX_GPIO_KEYS //[
-
 #include <mach/common.h>
 #include <linux/gpio_keys.h>
 #include <linux/input.h>
-
-#endif //] NTX_GPIO_KEYS
-
 
 
 //#define GPIOFN_PWRKEY	1
@@ -38,6 +32,8 @@
 #ifdef GPIOFN_PWRKEY//[
 	#include "../../../drivers/input/keyboard/gpiofn.h"
 #endif //]GPIOFN_PWRKEY
+
+#include "../../../drivers/video/mxc/lk_tps65185.h"
 
 
 //#define _WIFI_ALWAYS_ON_	// wifi always on for startic
@@ -48,28 +44,40 @@
 #define GPIO_ACIN_PG	(3*32 + 19)	/*GPIO_4_19 */
 #define GPIO_CHG		(3*32 + 18)	/*GPIO_4_18 */
 #define GPIO_ACIN_ID	(3*32 + 16)	/*GPIO_4_16 */
-#define GPIO_LED_ON		(0*32 + 24)	/*GPIO_1_24 */
-#define GPIO_ACT_ON		(5*32 + 24)	/*GPIO_6_24 */
+//#define GPIO_LED_ON		(0*32 + 24)	/*GPIO_1_24 */
+#define GPIO_LED_ON		gGPIO_LED_ON	/* default=GPIO_1_24 */
+
+//#define GPIO_ACT_ON		(5*32 + 24)	/*GPIO_6_24 */
+#define GPIO_ACT_ON		gGPIO_ACT_ON	/* default=GPIO_6_24 */
+
 #define GPIO_CHG_LED	(0*32 + 25)	/*GPIO_1_25 */
 #define GPIO_PWR_SW		(3*32 + 10)	/*GPIO_4_10 */
 #define GPIO_WIFI_3V3	(3*32 + 12)	/*GPIO_4_12 */
 #define GPIO_WIFI_RST	(4*32 + 14)	/*GPIO_5_14 */
+#define GPIO_WIFI_RST_4_17	(3*32 + 17)	/*GPIO_4_17 */
 #define GPIO_WIFI_INT	(3*32 + 8)	/*GPIO_4_8 */
 #define GPIO_MSP_INT	(3*32 + 11)	/*GPIO_4_11 */
 #define SD2_CD			(4*32 + 17) /*GPIO_5_17 */
 //#define SD2_WP			(4*32 + 16)	/*GPIO_5_16 */
 #define TOUCH_PWR		(3*32 + 16)	/*GPIO_4_16 */
+#define TP_PWEN			(3*32 + 9)	/*GPIO_4_9 */
 #define TOUCH_RST		(4*32 + 28)	/*GPIO_5_28 */
+#define TOUCH_RST_5_12	(4*32 + 12)	/*GPIO_5_12 */
 #define TOUCH_EN		(4*32 + 26)	/*GPIO_5_26 */
 #define TOUCH_INT		(4*32 + 15)	/*GPIO_5_15 */
 #define C_TOUCH_INT		(4*32 + 27)	/*GPIO_5_27 */
+#define C_TOUCH_INT_5_13	(4*32 + 13)	/*GPIO_5_13 */
 #define GPIO_I2C3_SDA	(5*32 + 23)	/*GPIO_6_23 */
 #define GPIO_I2C3_SCL	(5*32 + 22)	/*GPIO_6_22 */
 #define GPIO_AUDIO_PWR	(3*32 + 17)	/*GPIO_4_17 */
-#define G_SENSOR_INT	(4*32 + 25)	/*GPIO_5_25 */
-#define E50602_G_SENSOR_INT	(3*32 + 15)	/*GPIO_4_15 */
+//#define G_SENSOR_INT	(4*32 + 25)	/*GPIO_5_25 */
+//#define E50602_G_SENSOR_INT	(3*32 + 15)	/*GPIO_4_15 */
+#define SPD_EN		(3*32 + 13) /*GPIO_4_13 */
 #define FL_EN			(3*32 + 14) /*GPIO_4_14 */
 #define FL_R_EN			(3*32 + 22)	/*GPIO_4_22 */
+#define GPIO_TP56			(3*32 + 23)	/*GPIO_4_23 */
+#define GPIO_MSP430_TP_INT	(3*32 + 7)	/*GPIO_4_7 */
+//#define E606C2_G_SENSOR_INT	(4*32 + 27)	/*GPIO_5_27 */
 
 #define GPIO_KEY_COL_0		(3*32 + 0)	/*GPIO_4_0 */
 #define GPIO_KEY_ROW_0		(3*32 + 1)	/*GPIO_4_1 */
@@ -180,7 +188,7 @@
 #define CM_FRONT_LIGHT_AVAILABLE	242
 #define CM_FRONT_LIGHT_DUTY		243
 #define CM_FRONT_LIGHT_FREQUENCY	244
-
+#define CM_FRONT_LIGHT_R_EN		245
 #define CM_GET_KEYS				107
 
 
@@ -206,6 +214,7 @@ static GPIODATA gtNTX_PWR_GPIO_data = {
 
 #endif //]GPIOFN_PWRKEY
 
+static volatile unsigned gGPIO_LED_ON=(0*32 + 24),gGPIO_ACT_ON=(5*32 + 24);
 
 unsigned short  __EBRMAIN_PID__ = 0;
 
@@ -272,9 +281,9 @@ static unsigned int FL_table0[100]={
 0xB400,0xB800,0xBC00,0xC000,0xC400,0xC800,0xCC00,0xD000,0xD400,0xD800,
 0xDC00,0xE000,0xE400,0xE800,0xEC00,0xF000,0xF400,0xF800,0xFC00,0xFFFF
 };
-*/	
+*/
 static unsigned short FL_table0[100]={
-0x0006/*0x0001*/,0x0006,0x0007,0x0009,0x000C,0x000D,0x000E,0x000F,0x0011,0x0012,
+0x0001,0x0006,0x0007,0x0009,0x000C,0x000D,0x000E,0x000F,0x0011,0x0012,
 0x0014,0x0015,0x0017,0x0018,0x001A,0x001B,0x001C,0x001D,0x001F,0x0020,
 0x0022,0x0023,0x0025,0x0027,0x0028,0x002A,0x002B,0x002D,0x002E,0x0030,
 0x0031,0x0033,0x0035,0x0036,0x0038,0x0039,0x003B,0x003C,0x003E,0x0040,
@@ -285,7 +294,6 @@ static unsigned short FL_table0[100]={
 0x0118,0x011F,0x0125,0x012B,0x0131,0x0138,0x013E,0x0144,0x014A,0x0151,
 0x0157,0x015D,0x0163,0x016A,0x0170,0x0176,0x017C,0x0183,0x0189,0x018F
 };
-	
 
 struct front_light_setting {
     unsigned short fl_r_en;
@@ -293,7 +301,8 @@ struct front_light_setting {
     unsigned short duty;
 };
 
-static struct front_light_setting FL_table1[100]={
+static struct front_light_setting FL_table[][100]={
+{// TABLE1
 {0,20000,3}, {0,20000,5}, {0,20000,7}, {0,20000,9}, {0,20000,11},
 {0,20000,13}, {0,20000,15}, {0,20000,17}, {0,20000,19}, {0,20000,21}, 
 {0,20000,23}, {0,20000,25}, {0,20000,27}, {0,20000,30}, {0,20000,33},
@@ -313,7 +322,118 @@ static struct front_light_setting FL_table1[100]={
 {1,20000,200}, {1,20000,210}, {1,20000,220}, {1,20000,230}, {1,20000,240}, 
 {1,20000,250}, {1,20000,260}, {1,20000,270}, {1,20000,280}, {1,20000,290}, 
 {1,20000,300}, {1,20000,310}, {1,20000,320}, {1,20000,330}, {1,20000,340}, 
-{1,20000,350}, {1,20000,360}, {1,20000,370}, {1,20000,380}, {1,20000,400}, 
+{1,20000,350}, {1,20000,360}, {1,20000,370}, {1,20000,380}, {1,20000,400}
+},
+{// TABLE2
+{0,20000,  3 }, {0,20000,  4 }, {0,20000,  5 }, {0,20000,  6 }, {0,20000,  7 }, //  1%
+{0,20000,  8 }, {0,20000,  8 }, {0,20000,  9 }, {0,20000,  9 }, {0,20000, 10 }, //  
+{0,20000, 12 }, {0,20000, 16 }, {0,20000, 19 }, {0,20000, 22 }, {0,20000, 25 }, //  11%  
+{0,20000, 30 }, {0,20000, 38 }, {0,20000, 45 }, {0,20000, 52 }, {0,20000, 60 }, //
+{0,20000, 75 }, {0,20000,100 }, {0,20000,125 }, {0,20000,145 }, {0,20000,160 }, //  21%  
+{0,20000,160 }, {0,20000,160 }, {0,20000,160 }, {0,20000,160 }, {1,20000, 20 }, //
+{1,20000, 22 }, {1,20000, 24 }, {1,20000, 26 }, {1,20000, 28 }, {1,20000, 30 }, //  31%
+{1,20000, 32 }, {1,20000, 34 }, {1,20000, 36 }, {1,20000, 38 }, {1,20000, 40 }, //  
+{1,20000, 42 }, {1,20000, 44 }, {1,20000, 46 }, {1,20000, 48 }, {1,20000, 50 }, //  41%
+{1,20000, 52 }, {1,20000, 54 }, {1,20000, 56 }, {1,20000, 58 }, {1,20000, 60 }, //  
+{1,20000, 62 }, {1,20000, 65 }, {1,20000, 69 }, {1,20000, 74 }, {1,20000, 80 }, //  51%
+{1,20000, 84 }, {1,20000, 88 }, {1,20000, 92 }, {1,20000, 96 }, {1,20000,100 }, //  
+{1,20000,106 }, {1,20000,112 }, {1,20000,118 }, {1,20000,124 }, {1,20000,130 }, //  61%
+{1,20000,136 }, {1,20000,142 }, {1,20000,148 }, {1,20000,154 }, {1,20000,160 }, //  
+{1,20000,168 }, {1,20000,176 }, {1,20000,184 }, {1,20000,192 }, {1,20000,200 }, //  71%
+{1,20000,206 }, {1,20000,212 }, {1,20000,218 }, {1,20000,224 }, {1,20000,230 }, //  
+{1,20000,238 }, {1,20000,246 }, {1,20000,254 }, {1,20000,262 }, {1,20000,270 }, //  81%
+{1,20000,278 }, {1,20000,286 }, {1,20000,294 }, {1,20000,302 }, {1,20000,310 }, //  
+{1,20000,318 }, {1,20000,326 }, {1,20000,334 }, {1,20000,342 }, {1,20000,350 }, //  91%
+{1,20000,360 }, {1,20000,370 }, {1,20000,380 }, {1,20000,330 }, {1,20000,400 }
+}, 
+{// TABLE3
+{0,10000,6},{0,10000,28},{0,10000,44},{0,10000,62},{0,10000,87},
+{0,10000,100},{0,10000,112},{0,10000,128},{0,10000,147},{0,10000,153},
+{0,10000,165},{0,10000,172},{0,10000,181},{0,10000,194},{0,10000,215},
+{0,10000,225},{0,10000,247},{0,10000,265},{0,10000,287},{0,10000,490},
+{0,10000,500},{0,10000,515},{0,10000,537},{0,10000,553},{0,10000,587},
+{0,10000,618},{0,10000,681},{0,10000,737},{0,10000,799},{1,10000,6},
+{1,10000,12},{1,10000,19},{1,10000,25},{1,10000,28},{1,10000,37},
+{1,10000,44},{1,10000,53},{1,10000,56},{1,10000,62},{1,10000,69},
+{1,10000,75},{1,10000,81},{1,10000,87},{1,10000,94},{1,10000,100},
+{1,10000,103},{1,10000,109},{1,10000,116},{1,10000,122},{1,10000,128},
+{1,10000,134},{1,10000,137},{1,10000,144},{1,10000,150},{1,10000,165},
+{1,10000,178},{1,10000,187},{1,10000,197},{1,10000,206},{1,10000,215},
+{1,10000,225},{1,10000,237},{1,10000,250},{1,10000,262},{1,10000,275},
+{1,10000,287},{1,10000,300},{1,10000,312},{1,10000,325},{1,10000,337},
+{1,10000,350},{1,10000,365},{1,10000,381},{1,10000,393},{1,10000,409},
+{1,10000,425},{1,10000,440},{1,10000,456},{1,10000,471},{1,10000,484},
+{1,10000,496},{1,10000,509},{1,10000,524},{1,10000,540},{1,10000,553},
+{1,10000,568},{1,10000,584},{1,10000,599},{1,10000,615},{1,10000,631},
+{1,10000,646},{1,10000,659},{1,10000,677},{1,10000,696},{1,10000,712},
+{1,10000,731},{1,10000,746},{1,10000,765},{1,10000,784},{1,10000,799}
+},
+{// TABLE4
+{0,20000,2}, {0,20000,5}, {0,20000,8}, {0,20000,12}, {0,20000,16},
+{0,20000,22}, {0,20000,28}, {0,20000,36}, {0,20000,39}, {0,20000,45},
+{0,20000,52}, {0,20000,56}, {0,20000,61}, {0,20000,67}, {0,20000,75},
+{0,20000,81}, {0,20000,87}, {0,20000,94}, {0,20000,100}, {0,20000,106},
+{0,20000,112}, {0,20000,119}, {0,20000,131}, {0,20000,137}, {0,20000,144},
+{0,20000,156}, {0,20000,175}, {0,20000,188}, {0,20000,212}, {0,20000,231},
+{0,20000,237}, {0,20000,250}, {0,20000,256}, {0,20000,262}, {0,20000,268},
+{0,20000,275}, {0,20000,287}, {0,20000,293}, {0,20000,306}, {0,20000,331},
+{0,20000,337}, {0,20000,350}, {0,20000,368}, {1,20000,67}, {1,20000,69},
+{1,20000,72}, {1,20000,75}, {1,20000,81}, {1,20000,87}, {1,20000,94},
+{1,20000,100}, {1,20000,106}, {1,20000,112}, {1,20000,119}, {1,20000,125},
+{1,20000,131}, {1,20000,137}, {1,20000,144}, {1,20000,150}, {1,20000,156},
+{1,20000,162}, {1,20000,169}, {1,20000,175}, {1,20000,181}, {1,20000,185},
+{1,20000,188}, {1,20000,194}, {1,20000,200}, {1,20000,206}, {1,20000,212},
+{1,20000,219}, {1,20000,225}, {1,20000,231}, {1,20000,237}, {1,20000,244},
+{1,20000,250}, {1,20000,256}, {1,20000,262}, {1,20000,268}, {1,20000,275},
+{1,20000,281}, {1,20000,287}, {1,20000,293}, {1,20000,300}, {1,20000,306},
+{1,20000,312}, {1,20000,318}, {1,20000,325}, {1,20000,331}, {1,20000,337},
+{1,20000,343}, {1,20000,350}, {1,20000,356}, {1,20000,362}, {1,20000,368},
+{1,20000,375}, {1,20000,381}, {1,20000,387}, {1,20000,393}, {1,20000,400}
+},
+{// TABLE5
+{0,20000,39},{0,20000,41},{0,20000,42},{0,20000,45},{0,20000,47},
+{0,20000,48},{0,20000,50},{0,20000,53},{0,20000,56},{0,20000,59},
+{0,20000,62},{0,20000,64},{0,20000,67},{0,20000,70},{0,20000,73},
+{0,20000,75},{0,20000,81},{0,20000,87},{0,20000,94},{0,20000,100},
+{0,20000,106},{0,20000,112},{0,20000,119},{0,20000,125},{0,20000,131},
+{0,20000,137},{0,20000,144},{0,20000,150},{0,20000,156},{0,20000,162},
+{0,20000,168},{0,20000,175},{0,20000,181},{0,20000,185},{0,20000,194},
+{0,20000,200},{0,20000,206},{0,20000,212},{0,20000,219},{0,20000,225},
+{0,20000,231},{0,20000,237},{0,20000,244},{0,20000,250},{1,20000,67},
+{1,20000,70},{1,20000,73},{1,20000,75},{1,20000,81},{1,20000,87},
+{1,20000,94},{1,20000,100},{1,20000,106},{1,20000,112},{1,20000,119},
+{1,20000,125},{1,20000,131},{1,20000,137},{1,20000,144},{1,20000,150},
+{1,20000,156},{1,20000,162},{1,20000,169},{1,20000,175},{1,20000,181},
+{1,20000,188},{1,20000,194},{1,20000,200},{1,20000,206},{1,20000,212},
+{1,20000,219},{1,20000,225},{1,20000,231},{1,20000,237},{1,20000,244},
+{1,20000,250},{1,20000,256},{1,20000,262},{1,20000,268},{1,20000,275},
+{1,20000,281},{1,20000,287},{1,20000,293},{1,20000,300},{1,20000,306},
+{1,20000,312},{1,20000,318},{1,20000,325},{1,20000,331},{1,20000,337},
+{1,20000,343},{1,20000,350},{1,20000,356},{1,20000,362},{1,20000,368},
+{1,20000,375},{1,20000,381},{1,20000,387},{1,20000,393},{1,20000,400}
+},
+{// TABLE6
+{0,20000,39},{0,20000,42},{0,20000,45},{0,20000,47},{0,20000,50},
+{0,20000,53},{0,20000,59},{0,20000,62},{0,20000,64},{0,20000,67},
+{0,20000,70},{0,20000,73},{0,20000,75},{0,20000,81},{0,20000,87},
+{0,20000,94},{0,20000,100},{0,20000,106},{0,20000,112},{0,20000,119},
+{0,20000,125},{0,20000,131},{0,20000,137},{0,20000,144},{0,20000,150},
+{0,20000,156},{0,20000,162},{0,20000,168},{0,20000,175},{0,20000,181},
+{0,20000,185},{0,20000,194},{0,20000,200},{0,20000,206},{0,20000,212},
+{0,20000,219},{0,20000,225},{0,20000,231},{0,20000,237},{0,20000,244},
+{0,20000,250},{0,20000,260},{0,20000,270},{0,20000,280},{1,20000,55},
+{1,20000,58},{1,20000,63},{1,20000,68},{1,20000,75},{1,20000,81},
+{1,20000,87},{1,20000,94},{1,20000,100},{1,20000,106},{1,20000,112},
+{1,20000,119},{1,20000,125},{1,20000,131},{1,20000,137},{1,20000,144},
+{1,20000,150},{1,20000,156},{1,20000,162},{1,20000,169},{1,20000,175},
+{1,20000,181},{1,20000,188},{1,20000,194},{1,20000,200},{1,20000,206},
+{1,20000,212},{1,20000,219},{1,20000,225},{1,20000,231},{1,20000,237},
+{1,20000,244},{1,20000,250},{1,20000,256},{1,20000,262},{1,20000,268},
+{1,20000,275},{1,20000,281},{1,20000,287},{1,20000,293},{1,20000,300},
+{1,20000,306},{1,20000,312},{1,20000,318},{1,20000,325},{1,20000,331},
+{1,20000,337},{1,20000,343},{1,20000,350},{1,20000,356},{1,20000,362},
+{1,20000,368},{1,20000,375},{1,20000,381},{1,20000,387},{1,20000,400}
+}
 };
 
 struct delayed_work FL_off;
@@ -331,6 +451,7 @@ int g_wakeup_by_alarm;
 int gWifiEnabled=0;
 static unsigned long g_usb_in_tick;	// Joseph 101001
 static int g_ioctl_SD_status, g_ioctl_USB_status, g_ioctl_rotary_status,g_Cus_Ctrl_Led;
+static unsigned gw_gpio_wifi_rst = GPIO_WIFI_RST;
 int g_mmc_card_detect_changed;	// Joseph 20110125
 static DEFINE_SPINLOCK(led_flash_lock);
 static DECLARE_WAIT_QUEUE_HEAD(LED_blink_WaitQueue);
@@ -346,6 +467,15 @@ extern void gpio_sdhc_inactive(int module);
 extern void gpio_uart_inactive(int port, int no_irda);
 extern void mxc_mmc_force_detect(int id);
 extern void tle4913_init(void);
+
+extern iomux_v3_cfg_t mx50_sd1_enable_pads[6];
+extern iomux_v3_cfg_t mx50_sd1_disable_pads[6];
+extern unsigned mx50_sd1_gpioA[6];
+extern iomux_v3_cfg_t mx50_sd3_emmc_enable_pads[];
+extern iomux_v3_cfg_t mx50_sd3_emmc_disable_pads[];
+extern unsigned long gdw_mx50_sd3_emmc_disable_pads;
+extern unsigned long gdw_mx50_sd3_emmc_enable_pads;
+extern unsigned mx50_sd3_emmc_gpioA[10];
 
 int ntx_charge_status (void);
 
@@ -438,8 +568,11 @@ int check_hardware_name(void)
 			case 27: //E50610
 				pcb_id = 9;
 				break;
+			case 28: //E606C0
+				pcb_id = 11;
+				break;
 			default:
-				printk ("[%s-%d] undefined PCBA ID\n",__func__,__LINE__);
+				pcb_id = gptHWCFG->m_val.bPCB;
 				break;	
 		}
 #endif
@@ -489,15 +622,18 @@ static void bluetooth_pwr(int i)
 #define SD2_CLK		(4*32 + 6)	/*GPIO_5_6 */
 static void wifi_sdio_enable (int isEnable)
 {
+	int iHWID;
 	extern iomux_v3_cfg_t mx50_sd3_disable_pads[];
 	extern unsigned long gdw_mx50_sd3_disable_pads;
 
 	extern iomux_v3_cfg_t mx50_sd2_disable_pads[];
 	extern unsigned long gdw_mx50_sd2_disable_pads;
 
+	iHWID=check_hardware_name();
 
-	if(9==check_hardware_name()) {
-		// E50612 .
+	if(9==iHWID || 11==iHWID || 35==gptHWCFG->m_val.bPCB) {
+		// E5061X/E606CX/E606FXB .
+		//
 		//printk("E50612=> %s(%d)\n",__FUNCTION__,isEnable);
 		if (isEnable) {
 			mxc_iomux_v3_setup_pad(MX50_PAD_SD2_CLK__SD2_CLK_WIFI);
@@ -527,30 +663,63 @@ static void wifi_sdio_enable (int isEnable)
 	}
 }
 
+//#define TIMEDOUT_WAITING_FOR_UPDATE_COMPLETION_WORK_ARROUND	1
 
+extern int dvfs_core_is_active;
+extern void stop_dvfs(void);
+extern int start_dvfs(void);
 void ntx_wifi_power_ctrl (int isWifiEnable)
 {
+	int iHWID;
+	static int giRestore_DVFS_State=-1;
+	extern int mxc_epdc_fb_enable_reagl(int iIsEnable);
+
 	gWifiEnabled=isWifiEnable;
-	printk("Wifi / BT power control %d\n", isWifiEnable);
-    if(isWifiEnable == 0){
+	printk("Wifi / BT power control %d rst %d\n", isWifiEnable, gw_gpio_wifi_rst);
+	if(isWifiEnable == 0){
 		gpio_direction_input(GPIO_WIFI_3V3);	// turn off Wifi_3V3_on
-		gpio_set_value(GPIO_WIFI_RST, 0);		// turn on wifi_RST
+		gpio_direction_output(gw_gpio_wifi_rst, 0);		// turn on wifi_RST
 		wifi_sdio_enable (0);
 #ifdef _WIFI_ALWAYS_ON_
 		disable_irq_wake(gpio_to_irq(GPIO_WIFI_INT));
 #endif
-	}else{
+
+#ifdef TIMEDOUT_WAITING_FOR_UPDATE_COMPLETION_WORK_ARROUND //[
+		if(1==giRestore_DVFS_State) {
+			printk("re-active dvfs while wifi disabled ...\n");
+			start_dvfs();
+		}
+		mxc_epdc_fb_enable_reagl(1);
+#endif //]TIMEDOUT_WAITING_FOR_UPDATE_COMPLETION_WORK_ARROUND
+	}
+	else
+	{
+#ifdef TIMEDOUT_WAITING_FOR_UPDATE_COMPLETION_WORK_ARROUND //[
+		mxc_epdc_fb_enable_reagl(0);
+		if(dvfs_core_is_active) {
+			printk("disable dvfs while wifi enabled ...\n");
+			stop_dvfs();
+			giRestore_DVFS_State=1;
+		}
+		else {
+			giRestore_DVFS_State=-1;
+		}
+#endif //]TIMEDOUT_WAITING_FOR_UPDATE_COMPLETION_WORK_ARROUND
+
 		gpio_direction_output(GPIO_WIFI_3V3, 0);	// turn on Wifi_3V3_on
     	sleep_on_timeout(&Reset_WaitQueue,HZ/50);			
-		gpio_set_value(GPIO_WIFI_RST, 1);		// turn on wifi_RST
+		gpio_direction_output(gw_gpio_wifi_rst, 1);		// turn on wifi_RST
 		wifi_sdio_enable (1);
 #ifdef _WIFI_ALWAYS_ON_
 		enable_irq_wake(gpio_to_irq(GPIO_WIFI_INT));
 #endif
 	}
-	sleep_on_timeout(&Reset_WaitQueue,HZ/10);			
-	if(9==check_hardware_name()) {
-		// E50612 .
+	sleep_on_timeout(&Reset_WaitQueue,HZ/10);
+
+	iHWID=check_hardware_name();
+
+	if(9==iHWID||11==iHWID||35==gptHWCFG->m_val.bPCB) {
+		// E5061X/E606CX/E606FXB .
 		mxc_mmc_force_detect (1);
 	}
 	else {
@@ -572,7 +741,10 @@ int msp430_setwatchdog(int n);
 
 extern int msp430_write(unsigned int reg, unsigned int value);
 extern unsigned int msp430_read(unsigned int reg);
+
 extern int mma7660_read_orient (void);
+extern int mma7660_irqwake_enable (int iIsEnable);
+
 int gTSC2004_exist;	// Joseph 20100723
 unsigned long gLastBatTick, gUSB_Change_Tick;
 int gLastBatValue;
@@ -600,6 +772,14 @@ static int __init early_board(char *p)
 	return 0;
 }
 early_param("board", early_board);
+
+int power_key_status (void)
+{
+	if ((6 == check_hardware_name()) || (2 == check_hardware_name())) 		// E60632 || E50602
+		return gpio_get_value (GPIO_PWR_SW)?1:0;
+	else
+		return gpio_get_value (GPIO_PWR_SW)?0:1;
+}
 
 static int  ioctlDriver(struct inode *inode, struct file *filp, unsigned int command, unsigned long arg)
 {
@@ -675,10 +855,10 @@ static int  ioctlDriver(struct inode *inode, struct file *filp, unsigned int com
 				break;
 			}
 	
-			if (gIsMSP430IntTriggered || !gLastBatValue || ((0==gUSB_Change_Tick) && (200 < (jiffies - gLastBatTick)))) {
+			if (gIsMSP430IntTriggered || !gLastBatValue || ((0==gUSB_Change_Tick) && (time_after (jiffies, gLastBatTick)))) {
+				gLastBatTick = jiffies+200;
 				i = msp430_battery ();
 	 			if (i) {
-					gLastBatTick = jiffies;
 					temp = msp430_read (0x60);
 					if (0x8000 & temp) {
 						printk ("[%s-%d] =================> Micro P MSP430 alarm triggered <===================\n", __func__, __LINE__);
@@ -708,6 +888,7 @@ static int  ioctlDriver(struct inode *inode, struct file *filp, unsigned int com
 					}
 				}
 				else {
+					gLastBatTick = jiffies;
 					printk ("[%s-%d] MSP430 read failed\n", __func__, __LINE__);
 					i = 0x7FFF;
 				}
@@ -758,13 +939,13 @@ static int  ioctlDriver(struct inode *inode, struct file *filp, unsigned int com
 		case CM_AUDIO_PWR:
 	        if (p) {
 	        	// Turn on audio power
-        		gpio_direction_output(GPIO_AUDIO_PWR, 0);
+//        		gpio_direction_output(GPIO_AUDIO_PWR, 0);
 				mxc_iomux_v3_setup_pad(MX50_PAD_PWM2__PWMO);
 //	        	gpio_activate_audio_ports(); // 會造成IO REQUEST ERROR !?
 	        }
 	        else {	// turn off audio power
 				mxc_iomux_v3_setup_pad(MX50_PAD_PWM2__GPIO_6_25);
-        		gpio_direction_input(GPIO_AUDIO_PWR);
+//        		gpio_direction_input(GPIO_AUDIO_PWR);
 //	        	gpio_inactivate_audio_ports(); // 會造成IO REQUEST ERROR !?
 	        }
 			break;
@@ -867,9 +1048,9 @@ static int  ioctlDriver(struct inode *inode, struct file *filp, unsigned int com
 			break;
               	          	
 		case CM_BLUETOOTH_RESET:
-			gpio_set_value(GPIO_WIFI_RST, 0);	// WIFI_RST
+			gpio_direction_output(gw_gpio_wifi_rst, 0);	// WIFI_RST
     		sleep_on_timeout(&Reset_WaitQueue,HZ/100);
-			gpio_set_value(GPIO_WIFI_RST, 1);
+			gpio_direction_output(gw_gpio_wifi_rst, 1);
 			mxc_mmc_force_detect (2);
 			schedule_timeout (500);
 			break;
@@ -880,12 +1061,19 @@ static int  ioctlDriver(struct inode *inode, struct file *filp, unsigned int com
       		break;	
       		
 		case CM_ROTARY_STATUS:	
-			if (4 == check_hardware_name() || 2 == check_hardware_name() || 3 == check_hardware_name()) {
+			if (2==gptHWCFG->m_val.bRSensor) {
 				i = mma7660_read_orient ();
+#if 0
 				if (2 == check_hardware_name()) {
 					if (5 == (++i))
 						i = 1;
 				}
+				else if (28 == gptHWCFG->m_val.bPCB) {
+					if (0 == (--i))
+						i = 4;
+				}
+#endif
+				//printk("CM_ROTARY_STAUS=%d\n",i);
 			}
 			else
 				i = 0;
@@ -893,24 +1081,9 @@ static int  ioctlDriver(struct inode *inode, struct file *filp, unsigned int com
       		break;	
       		
 		case CM_ROTARY_ENABLE:	
-			switch (check_hardware_name()) {
-				case 4:
-				case 3:
-					if (p)
-						enable_irq_wake(gpio_to_irq(G_SENSOR_INT));
-					else
-						disable_irq_wake(gpio_to_irq(G_SENSOR_INT));
-					break;
-				case 2:
-					if (p)
-						enable_irq_wake(gpio_to_irq(E50602_G_SENSOR_INT));
-					else
-						disable_irq_wake(gpio_to_irq(E50602_G_SENSOR_INT));
-					break;
-				default:
-					break;
-			}
-      		break;	
+			mma7660_irqwake_enable (p);
+      break;
+
 		case CM_GET_KEYS:
 			i = 0;
 			copy_to_user((void __user *)arg, &i, sizeof(unsigned long));
@@ -931,7 +1104,7 @@ static int  ioctlDriver(struct inode *inode, struct file *filp, unsigned int com
 						gMxcPowerKeyIrqTriggered = 1;
 						g_power_key_debounce = 5;	// Joseph 20100921 for ESD
 						g_power_key_pressed = 1;
-						gLastBatTick = jiffies-500;	
+						gLastBatTick = jiffies;	
 					}
 					else
 						gIsMSP430IntTriggered = 0;
@@ -943,10 +1116,7 @@ static int  ioctlDriver(struct inode *inode, struct file *filp, unsigned int com
 				i = 1;
 			}
 			else {
-				if ((6 == check_hardware_name()) || (2 == check_hardware_name())) 		// E60632 || E50602
-					i = (gpio_get_value (GPIO_PWR_SW))?1:0;	// POWER key
-				else
-					i = (gpio_get_value (GPIO_PWR_SW))?0:1;	// POWER key
+				i = power_key_status ();
 				
 				if (i) {
 					if (2 >= g_power_key_debounce) { 	// Joseph 20100921 for ESD
@@ -1027,6 +1197,7 @@ static int  ioctlDriver(struct inode *inode, struct file *filp, unsigned int com
 			break;
 
 		case CM_FRONT_LIGHT_SET:
+
 			if(0!=gptHWCFG->m_val.bFrontLight)
 			{
 				if (p) {
@@ -1043,19 +1214,6 @@ static int  ioctlDriver(struct inode *inode, struct file *filp, unsigned int com
 							msp430_write (0xA7, FL_table0[p-1]&0xFF00);   // Set PWM duty
 							msp430_write (0xA6, FL_table0[p-1]<<8);
 							printk("PWMCNT : 0x%04x\n", FL_table0[p-1]);
-						}
-						else if( gptHWCFG->m_val.bFrontLight == 4){  //TABLE1
-							int freq = 8000000/FL_table1[p-1].freq;
-
-							gpio_direction_output (FL_R_EN, FL_table1[p-1].fl_r_en);				
-							if( freq != current_FL_freq){
-								printk ("Set front light Frequency : %d\n",FL_table1[p-1].freq);	
-								msp430_write (0xA5, freq&0xFF00);	// Set Frequency 8M/freq
-								msp430_write (0xA4, freq<<8);
-								current_FL_freq = freq;
-							}
-							msp430_write (0xA7, FL_table1[p-1].duty&0xFF00);	// Set PWM duty
-							msp430_write (0xA6, FL_table1[p-1].duty<<8);
 						}
 						else if( gptHWCFG->m_val.bFrontLight == 1 || gptHWCFG->m_val.bFrontLight == 2 ){  //TABLE0, TABLE0+
 							if (0 == last_FL_duty){
@@ -1074,7 +1232,28 @@ static int  ioctlDriver(struct inode *inode, struct file *filp, unsigned int com
 								printk("PWMCNT : 0x%04x\n", FL_table0[p-1]);
 							}
 						}
-					}else{
+						else{  
+							int t_no = gptHWCFG->m_val.bFrontLight-4; // mapping hwconfig to FL_table
+							int freq = 8000000/FL_table[t_no][p-1].freq;
+		
+							if (last_FL_duty >= p)
+								gpio_direction_output (FL_R_EN, FL_table[t_no][p-1].fl_r_en);					
+
+							if( freq != current_FL_freq){
+								printk ("Set front light Frequency : %d\n",FL_table[t_no][p-1].freq);	
+								msp430_write (0xA5, freq&0xFF00);	// Set Frequency 8M/freq
+								msp430_write (0xA4, freq<<8);
+								current_FL_freq = freq;
+							}
+							msp430_write (0xA7, FL_table[t_no][p-1].duty&0xFF00);	// Set PWM duty
+							msp430_write (0xA6, FL_table[t_no][p-1].duty<<8);
+							printk ("Set front light duty : %d\n",FL_table[t_no][p-1].duty);	
+
+							if (last_FL_duty < p)
+								gpio_direction_output (FL_R_EN, FL_table[t_no][p-1].fl_r_en);			
+						}
+					}
+					else{
 						printk("Wrong number! level range from 0 to 100\n");
 					}
 					if (0 == last_FL_duty){
@@ -1094,7 +1273,6 @@ static int  ioctlDriver(struct inode *inode, struct file *filp, unsigned int com
 				}
 				last_FL_duty = p;
 			}
-
 			break;
 
 		case CM_FRONT_LIGHT_AVAILABLE:
@@ -1143,6 +1321,14 @@ static int  ioctlDriver(struct inode *inode, struct file *filp, unsigned int com
 					msp430_write (0xA4, (p<<8));
 					current_FL_freq = p;
 				}
+			}
+			break;
+
+		case CM_FRONT_LIGHT_R_EN:
+			if(0!=gptHWCFG->m_val.bFrontLight)
+			{
+				printk ("set FL_R_EN : %d\n",p);		
+				gpio_direction_output(FL_R_EN, p);
 			}
 			break;
 
@@ -1334,7 +1520,6 @@ int FL_suspend(void){
 	return 0;
 }
 
-
 static int sleep_thread(void)
 {
 int	rc = 0;
@@ -1427,19 +1612,11 @@ EXPORT_SYMBOL(wlan_power);
 
 int wlan_reset(bool status)
 {
-	gpio_set_value(GPIO_WIFI_RST, ((status)?1:0));	// wifi_RST
+	gpio_set_value(gpio_direction_output, ((status)?1:0));	// wifi_RST
 	return 0;
 }
 EXPORT_SYMBOL(wlan_reset);
 
-/*!
- *  rotary seneor interrupt handler.
- */
-static irqreturn_t rotary_int(int irq, void *dev_id)
-{
-	pr_info(KERN_INFO "rotary sensor triggered ...\n");
-	return 0;
-}
 
 static irqreturn_t c_touch_int(int irq, void *dev_id)
 {
@@ -1480,25 +1657,37 @@ int pxa168_chechk_suspend (void)
 }
 
 static struct timer_list power_key_timer;
+
+extern void mxc_kpp_report_key(int isDown,__u16 wKeyCode);
+extern void gpiokeys_report_key(int isDown,__u16 wKeyCode);
 extern void mxc_kpp_report_power(int isDown);
+extern void gpiokeys_report_power(int isDown);
+
+void ntx_report_key(int isDown,__u16 wKeyCode)
+{
+	if(NTXHWCFG_TST_FLAG(gptHWCFG->m_val.bPCB_Flags,0)) {
+		// no keymatrix .
+		gpiokeys_report_key(isDown, wKeyCode);
+	}else{
+		mxc_kpp_report_key(isDown, wKeyCode);
+	}
+}
+
+void ntx_report_power(int isDown)
+{
+	ntx_report_key(isDown, KEY_POWER);	
+}
 
 static void power_key_chk(unsigned long v)
 {
-	int pwr_key;
-	
-	if ((6 == check_hardware_name()) || (2 == check_hardware_name())) 		// E60632 || E50602
-		pwr_key = gpio_get_value (GPIO_PWR_SW)?1:0;
-	else
-		pwr_key = gpio_get_value (GPIO_PWR_SW)?0:1;
-	
-	if (pwr_key) {
+	if (power_key_status()) {
 		++g_power_key_debounce;
-		if ((2 == g_power_key_debounce) && gIsCustomerUi)
-			mxc_kpp_report_power(1);
+		if ((2 == g_power_key_debounce))
+			ntx_report_power(1);
 		mod_timer(&power_key_timer, jiffies + 1);
 	}
-	else if (gIsCustomerUi)
-		mxc_kpp_report_power(0);
+	else
+		ntx_report_power(0);
 }
 
 void power_key_int_function(void)
@@ -1514,6 +1703,8 @@ static irqreturn_t power_key_int(int irq, void *dev_id)
 	return 0;
 }
 
+
+static unsigned long gdwTheTickToChkACINPlug;
 static struct timer_list acin_pg_timer;
 static int g_acin_pg_debounce;
 typedef void (*usb_insert_handler) (char inserted);
@@ -1524,30 +1715,51 @@ static void acin_pg_chk(unsigned long v)
 {
 	int i;
 
+	del_timer_sync(&acin_pg_timer);
+
 	if (!gpio_get_value (GPIO_ACIN_PG)) {
 		++g_acin_pg_debounce;
-		if (10 == g_acin_pg_debounce) {
+		if (10 == g_acin_pg_debounce) 
+		{
 			if (gIsCustomerUi) {
-				mxc_misc_report_usb(1);
-				ntx_charger_online_event_callback ();
+				if(mxc_misc_report_usb) {
+					mxc_misc_report_usb(1);
+					ntx_charger_online_event_callback ();
+				}
+				else {
+					printk(KERN_ERR"mxc_misc_report_usb=0,skip %s()\n",__FUNCTION__);
+				}
 			}
 		}
-		mod_timer(&acin_pg_timer, jiffies + 1);
+		else
+			mod_timer(&acin_pg_timer, jiffies + 1);
 	}
 	else {
 		//if (gLastBatValue)
 		//	gLastBatValue += 50;
 
 		if (gIsCustomerUi) {
-			mxc_misc_report_usb(0);
-			ntx_charger_online_event_callback ();
+			if(mxc_misc_report_usb) {
+				mxc_misc_report_usb(0);
+				ntx_charger_online_event_callback ();
+			}
+			else {
+			}
 		}
 	}
 }
 
 int ntx_charge_status (void)
 {
-	return ((gpio_get_value (GPIO_ACIN_PG)?0:1) | (gpio_get_value (GPIO_CHG)?0:2));
+	if (gpio_get_value (GPIO_ACIN_PG)) {
+		return 0;
+	}
+	else {
+		if(35==gptHWCFG->m_val.bPCB)
+			return (1 | ((msp430_read (0x60)&0x08)?0:2));
+		else
+			return (1 | (gpio_get_value (GPIO_CHG)?0:2));
+	}
 }
 int ntx_get_battery_vol (void)
 {
@@ -1566,10 +1778,10 @@ int ntx_get_battery_vol (void)
 		}
 	}
 	
-	if (gIsMSP430IntTriggered || !gLastBatValue || ((0 == gUSB_Change_Tick) && (200 < (jiffies - gLastBatTick)))) {
+	if (gIsMSP430IntTriggered || !gLastBatValue || ((0 == gUSB_Change_Tick) && (time_after (jiffies, gLastBatTick)))) {
+		gLastBatTick = jiffies+200;
 		battValue = msp430_battery ();
 		if (battValue) {
-			gLastBatTick = jiffies;
 			if (gpio_get_value (GPIO_ACIN_PG)) {// not charging
 				temp = msp430_read (0x60);
 				if (-1 != temp ) {
@@ -1597,6 +1809,7 @@ int ntx_get_battery_vol (void)
 			}
 		}
 		else {
+			gLastBatTick = jiffies;
 			printk ("[%s-%d] MSP430 read failed\n", __func__, __LINE__);
 			battValue = 0;
 		}
@@ -1633,6 +1846,8 @@ int ntx_get_battery_vol (void)
 
 static irqreturn_t ac_in_int(int irq, void *dev_id)
 {
+	del_timer_sync(&acin_pg_timer);
+
 	gUSB_Change_Tick = jiffies;	// do not check battery value in 6 seconds
 	if (gpio_get_value (GPIO_ACIN_PG)) 
 		set_irq_type(irq, IRQF_TRIGGER_FALLING);
@@ -1641,7 +1856,16 @@ static irqreturn_t ac_in_int(int irq, void *dev_id)
 	}
 	
 	g_acin_pg_debounce = 0;
-	mod_timer(&acin_pg_timer, jiffies + 1);
+
+	if(time_after(jiffies,gdwTheTickToChkACINPlug)) {
+		//printk(KERN_ERR"%s(%d) %d,%d\n",__FUNCTION__,__LINE__,jiffies,gdwTheTickToChkACINPlug);
+		mod_timer(&acin_pg_timer, jiffies + 1);
+	}
+	else {
+		//printk(KERN_ERR"%s(%d) %d,%d\n",__FUNCTION__,__LINE__,jiffies,gdwTheTickToChkACINPlug);
+		mod_timer(&acin_pg_timer, gdwTheTickToChkACINPlug );
+	}
+
 	return 0;
 }
 
@@ -1662,10 +1886,7 @@ static irqreturn_t msp_int(int irq, void *dev_id)
 }
 
 
-#ifdef NTX_GPIO_KEYS //[
-
-#define HALLSENSOR_KEY  (4*32 + 25) /* GPIO_5_25 */
-
+// NTX_GPIO_KEYS 
 #define NTX_GPIO_KEYS_MAX		5
 static int gi_ntx_gpio_buttons_total = 0;
 static struct gpio_keys_button ntx_gpio_buttons[NTX_GPIO_KEYS_MAX] = {
@@ -1677,16 +1898,44 @@ static struct gpio_keys_platform_data ntx_gpio_key_data = {
   .rep=0,
 };
 static struct platform_device ntx_gpio_key_device = {
-  .name = "gpio-keys",
+  .name = "mxckpd",
   .id = -1,
   .dev = {
     .platform_data = &ntx_gpio_key_data,
   },
 };
 
-#endif//] NTX_GPIO_KEYS
+#define GPIO_KEY_GP_4_7		(3*32 + 7)	/*GPIO_4_7 */
 
-
+void MSP430_touch_power (int isOn)
+{
+	if (isOn) {
+		gpio_free (5*32+21);
+		gpio_free (5*32+20);
+		mxc_iomux_v3_setup_pad(MX50_PAD_KEY_ROW3__GPIO_4_7);
+		mxc_iomux_v3_setup_pad(MX50_PAD_I2C2_SDA__I2C2_SDA);
+		mxc_iomux_v3_setup_pad(MX50_PAD_I2C2_SCL__I2C2_SCL);
+		gpio_direction_output(TOUCH_PWR, 0);
+		enable_irq (gpio_to_irq(GPIO_KEY_GP_4_7));
+		enable_irq_wake (gpio_to_irq(GPIO_KEY_GP_4_7));
+	}
+	else {
+		gpio_direction_input(TOUCH_PWR);
+		
+		disable_irq_wake (gpio_to_irq(GPIO_KEY_GP_4_7));
+		disable_irq (gpio_to_irq(GPIO_KEY_GP_4_7));
+		
+		mxc_iomux_v3_setup_pad(MX50_PAD_KEY_ROW3__GPIO_4_7_NP);
+		
+		mxc_iomux_v3_setup_pad(MX50_PAD_I2C2_SDA__GPIO_6_21);
+		gpio_request((5*32+21), "GPIO_6_21");
+		gpio_direction_output((5*32+21),0);
+		
+		mxc_iomux_v3_setup_pad(MX50_PAD_I2C2_SCL__GPIO_6_20);
+		gpio_request((5*32+20), "GPIO_6_20");
+		gpio_direction_output((5*32+20),0);
+	}
+}
 
 #define IR_TOUCH_RST		(4*32 + 26)	/*GPIO_5_26 */
 
@@ -1694,6 +1943,20 @@ static int gpio_initials(void)
 {
 	int irq, ret;
 	int error;
+
+	gdwTheTickToChkACINPlug = (unsigned long)(jiffies+500);
+  		
+  if(34==gptHWCFG->m_val.bPCB || 35==gptHWCFG->m_val.bPCB) {			// E606FXA , E606FXB
+		mxc_iomux_v3_setup_pad(MX50_PAD_ECSPI1_MOSI__GPIO_4_13);
+		gpio_request((3*32+13), "GPIO_4_13");
+		gpio_direction_output(SPD_EN,1);
+	}
+  
+	if(28==gptHWCFG->m_val.bPCB || 34==gptHWCFG->m_val.bPCB || 35==gptHWCFG->m_val.bPCB) {
+		// E606CX, E606FXA, E606FXB
+		gGPIO_LED_ON = (5*32 + 24); // GPIO6_24 . ON_LED#
+		gGPIO_ACT_ON = (0*32 + 24); // GPIO1_24 . ON_LED#
+	}
 	
 	// Epson_3v3_PWR_ON 
 
@@ -1708,6 +1971,9 @@ static int gpio_initials(void)
 	gpio_request(GPIO_ACIN_PG, "acin_pg");
 	gpio_direction_input(GPIO_ACIN_PG);
 	{
+		acin_pg_timer.function = acin_pg_chk;
+		init_timer(&acin_pg_timer);
+
 		/* Set AC in as wakeup resource */
 		irq = gpio_to_irq(GPIO_ACIN_PG);
 		
@@ -1720,8 +1986,6 @@ static int gpio_initials(void)
 			pr_info("register ACIN_PG interrupt failed\n");
 		else
 			enable_irq_wake(irq);
-		acin_pg_timer.function = acin_pg_chk;
-		init_timer(&acin_pg_timer);
 	}
 	mxc_iomux_v3_setup_pad(MX50_PAD_ECSPI2_MISO__GPIO_4_18);
 	gpio_request(GPIO_CHG, "charge_det");
@@ -1732,9 +1996,11 @@ static int gpio_initials(void)
 	gpio_request(GPIO_LED_ON, "led_on");
 	gpio_direction_output(GPIO_LED_ON, 1);
 	
-	mxc_iomux_v3_setup_pad(MX50_PAD_PWM1__GPIO_6_24);
-	gpio_request(GPIO_ACT_ON, "action_on");
-	gpio_direction_output(GPIO_ACT_ON, 1);
+	if(gptHWCFG->m_val.bPCB != 30) {  // E606E2
+		mxc_iomux_v3_setup_pad(MX50_PAD_PWM1__GPIO_6_24);
+		gpio_request(GPIO_ACT_ON, "action_on");
+		gpio_direction_output(GPIO_ACT_ON, 1);
+	}
 	
 	/* CHG_LED */
 	mxc_iomux_v3_setup_pad(MX50_PAD_EIM_RW__GPIO_1_25);
@@ -1742,13 +2008,18 @@ static int gpio_initials(void)
 	gpio_direction_output(GPIO_CHG_LED, 1);
 	
 	/* Audio_PWR_ON */
+#if 0
 	mxc_iomux_v3_setup_pad(MX50_PAD_ECSPI2_MOSI__GPIO_4_17);
 	gpio_request(GPIO_AUDIO_PWR, "audio_pwr");
 	gpio_direction_input(GPIO_AUDIO_PWR);
-	
+#endif
+
 	/* AMP_EN */
 	
 	/* OFF_CHK */
+	power_key_timer.function = power_key_chk;
+	init_timer(&power_key_timer);
+
 	#ifdef GPIOFN_PWRKEY//[
 	gpiofn_register(&gtNTX_PWR_GPIO_data);
 	#else //][!GPIOFN_PWRKEY
@@ -1759,7 +2030,7 @@ static int gpio_initials(void)
 		/* Set power key as wakeup resource */
 		irq = gpio_to_irq(GPIO_PWR_SW);
 	
-		if ((6 == check_hardware_name()) || (2 == check_hardware_name())) 		// E60632 || E50602
+		if ((6 == check_hardware_name()) || (2 == check_hardware_name())) 		// E60632 || E50602 
 			set_irq_type(irq, IRQF_TRIGGER_RISING);
 		else
 			set_irq_type(irq, IRQF_TRIGGER_FALLING);
@@ -1770,13 +2041,12 @@ static int gpio_initials(void)
 			enable_irq_wake(irq);
 	}
 	#endif //]GPIOFN_PWRKEY
-	power_key_timer.function = power_key_chk;
-	init_timer(&power_key_timer);
 	
 	tle4913_init();
 	
-//	if ((1 == check_hardware_name()) || (10 == check_hardware_name()) || (14 == check_hardware_name())) {	// E60612 , E606A2 ,E606B2 , ir touch 
-	if(4==gptHWCFG->m_val.bTouchType) {    //IR touch
+//	if ((1 == check_hardware_name()) || (10 == check_hardware_name()) || (14 == check_hardware_name())) 	// E60612 , E606A2 ,E606B2 , ir touch 
+	if(4==gptHWCFG->m_val.bTouchType) 
+	{    //IR touch
 
 		// Touch interrupt
 		mxc_iomux_v3_setup_pad(MX50_PAD_SD2_D7__GPIO_5_15);
@@ -1794,76 +2064,89 @@ static int gpio_initials(void)
 	}
 	else {		// C touch.
 		// Touch interrupt
-		mxc_iomux_v3_setup_pad(MX50_PAD_SD3_D7__GPIO_5_27);
-		gpio_request(C_TOUCH_INT, "c_touch_int");
-		gpio_direction_input(C_TOUCH_INT);
+		if (35==gptHWCFG->m_val.bPCB) {
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD2_D5__GPIO_5_13);
+			gpio_request(C_TOUCH_INT_5_13, "c_touch_int");
+			gpio_direction_input(C_TOUCH_INT_5_13);
+		
+			// Touch reset
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD2_D4__GPIO_5_12);
+			gpio_request(TOUCH_RST_5_12, "touch_rst");
+			gpio_direction_output(TOUCH_RST_5_12, 0);
+			
+			// Touch power
+			mxc_iomux_v3_setup_pad(MX50_PAD_CSPI_MOSI__GPIO_4_9);
+			gpio_request(TP_PWEN, "tp_pwen");
+			gpio_direction_output(TP_PWEN, 1);
+			
+			msleep (50);
+			gpio_direction_output(TOUCH_RST_5_12, 1);
+		}
+		else {
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD3_D7__GPIO_5_27);
+			gpio_request(C_TOUCH_INT, "c_touch_int");
+			gpio_direction_input(C_TOUCH_INT);
 		
 #ifdef DIGITIZER_TEST
-		set_irq_type(gpio_to_irq(C_TOUCH_INT), IRQF_TRIGGER_RISING);
-		ret = request_irq(gpio_to_irq(C_TOUCH_INT), c_touch_int, 0, "c_touch", 0);
-		if (ret)
-			pr_info("register G_SENSOR_INT interrupt failed\n");
-		else
-			enable_irq_wake(gpio_to_irq(C_TOUCH_INT));
+			set_irq_type(gpio_to_irq(C_TOUCH_INT), IRQF_TRIGGER_RISING);
+			ret = request_irq(gpio_to_irq(C_TOUCH_INT), c_touch_int, 0, "c_touch", 0);
+			if (ret)
+				pr_info("register C_TOUCH_INT interrupt failed\n");
+			else
+				enable_irq_wake(gpio_to_irq(C_TOUCH_INT));
 #endif
 		
-		// Touch reset
-		mxc_iomux_v3_setup_pad(MX50_PAD_SD3_WP__GPIO_5_28);
-		gpio_request(TOUCH_RST, "touch_rst");
-		gpio_direction_output(TOUCH_RST, 0);
-		
+			// Touch reset
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD3_WP__GPIO_5_28);
+			gpio_request(TOUCH_RST, "touch_rst");
+			gpio_direction_output(TOUCH_RST, 0);
+			
+			// Touch power
+			mxc_iomux_v3_setup_pad(MX50_PAD_ECSPI2_SCLK__GPIO_4_16);
+			gpio_request(TOUCH_PWR, "touch_pwr");
+			gpio_direction_output(TOUCH_PWR, 0);
+			// Touch enable
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD3_D6__GPIO_5_26);
+			gpio_request(TOUCH_EN, "touch_en");
+#ifdef DIGITIZER_TEST
+#ifdef HANVON_TOUCH
+			gpio_direction_output(TOUCH_EN, 0);
+#else		
+			gpio_direction_output(TOUCH_EN, 1);	// PVI touch
+#endif
+			gpio_direction_output(TOUCH_RST, 1);
+			msleep (10);
+			gpio_direction_output(TOUCH_RST, 0);
+			msleep (100);
+			gpio_direction_output(TOUCH_RST, 1);
+#else
+			gpio_direction_output(TOUCH_EN, 1);
+			msleep (50);
+			gpio_direction_output(TOUCH_RST, 1);
+#endif
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD3_D7__GPIO_5_27_PU);
+		}
+	}
+
+	if ( NTXHWCFG_TST_FLAG(gptHWCFG->m_val.bPCB_Flags,1) ) {	// FPC_Touch : ON
+		 
 		// Touch power
 		mxc_iomux_v3_setup_pad(MX50_PAD_ECSPI2_SCLK__GPIO_4_16);
 		gpio_request(TOUCH_PWR, "touch_pwr");
 		gpio_direction_output(TOUCH_PWR, 0);
 		
-		// Touch enable
-		mxc_iomux_v3_setup_pad(MX50_PAD_SD3_D6__GPIO_5_26);
-		gpio_request(TOUCH_EN, "touch_en");
-#ifdef DIGITIZER_TEST
-#ifdef HANVON_TOUCH
-		gpio_direction_output(TOUCH_EN, 0);
-#else		
-		gpio_direction_output(TOUCH_EN, 1);	// PVI touch
-#endif
-		gpio_direction_output(TOUCH_RST, 1);
-		msleep (10);
-		gpio_direction_output(TOUCH_RST, 0);
-		msleep (100);
-		gpio_direction_output(TOUCH_RST, 1);
-#else
-		gpio_direction_output(TOUCH_EN, 1);
-		gpio_direction_output(TOUCH_RST, 1);
-		msleep (50);
-#endif
-		mxc_iomux_v3_setup_pad(MX50_PAD_SD3_D7__GPIO_5_27_PU);
+		mxc_iomux_v3_setup_pad(MX50_PAD_KEY_ROW3__GPIO_4_7);
+		gpio_request(GPIO_MSP430_TP_INT, "msp430_touch_int");
+		gpio_direction_input(GPIO_MSP430_TP_INT);
+		set_irq_type(gpio_to_irq(GPIO_MSP430_TP_INT), IRQF_TRIGGER_FALLING);
 	}
-	
+
+
+
 	if (4 == check_hardware_name() || 3 == check_hardware_name()) {
 		// MMA7660 INT
-		mxc_iomux_v3_setup_pad(MX50_PAD_SD3_D5__GPIO_5_25);
-		gpio_request(G_SENSOR_INT, "touch_rst");
-		gpio_direction_input(G_SENSOR_INT);
-
-		set_irq_type(gpio_to_irq(G_SENSOR_INT), IRQF_TRIGGER_FALLING);
-		ret = request_irq(gpio_to_irq(G_SENSOR_INT), rotary_int, 0, "rotary_a", 0);
-		if (ret)
-			pr_info("register G_SENSOR_INT interrupt failed\n");
-		else
-			enable_irq_wake(gpio_to_irq(G_SENSOR_INT));
 	}
 	else if (2 == check_hardware_name()) {	
-		// MMA7660 INT
-		mxc_iomux_v3_setup_pad(MX50_PAD_ECSPI1_SS0__GPIO_4_15);
-		gpio_request(E50602_G_SENSOR_INT, "g_sensor_int");
-		gpio_direction_input(E50602_G_SENSOR_INT);
-
-		set_irq_type(gpio_to_irq(E50602_G_SENSOR_INT), IRQF_TRIGGER_FALLING);
-		ret = request_irq(gpio_to_irq(E50602_G_SENSOR_INT), rotary_int, 0, "rotary_a", 0);
-		if (ret)
-			pr_info("register E50602_G_SENSOR_INT interrupt failed\n");
-		else
-			enable_irq_wake(gpio_to_irq(E50602_G_SENSOR_INT));
 			
 		mxc_iomux_v3_setup_pad(MX50_PAD_SD2_CLK__SD2_CLK_DSL);
 		mxc_iomux_v3_setup_pad(MX50_PAD_SD2_CMD__SD2_CMD_DSL);
@@ -1887,21 +2170,69 @@ static int gpio_initials(void)
 			mxc_iomux_v3_setup_pad(MX50_PAD_SD2_D3__SD2_D3_DSM);
 		}
 		break;
-		/*
-		case 22:
+		case 28:
 		{
-			// E606A2 
-			printk("ESD DSL\n");
-			mxc_iomux_v3_setup_pad(MX50_PAD_SD2_CLK__SD2_CLK_DSL);
-			mxc_iomux_v3_setup_pad(MX50_PAD_SD2_CMD__SD2_CMD_DSL);
-			mxc_iomux_v3_setup_pad(MX50_PAD_SD2_D0__SD2_D0_DSL);
-			mxc_iomux_v3_setup_pad(MX50_PAD_SD2_D1__SD2_D1_DSL);
-			mxc_iomux_v3_setup_pad(MX50_PAD_SD2_D2__SD2_D2_DSL);
-			mxc_iomux_v3_setup_pad(MX50_PAD_SD2_D3__SD2_D3_DSL);
+			// E606CX 
+			printk("E606CX,ESD DSL/ISD DSM\n");
+			// External SD .
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD1_CLK__SD1_CLK_DSL);
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD1_CMD__SD1_CMD_DSL);
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD1_D0__SD1_D0_DSL);
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD1_D1__SD1_D1_DSL);
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD1_D2__SD1_D2_DSL);
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD1_D3__SD1_D3_DSL);
+			// Internal SD
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD3_CLK__SD3_CLK_DSM);
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD3_CMD__SD3_CMD_DSM);
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD3_D0__SD3_D0_DSM);
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD3_D1__SD3_D1_DSM);
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD3_D2__SD3_D2_DSM);
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD3_D3__SD3_D3_DSM);
+
+			
 		}
 		break;
-		*/
-
+		case 30: // E606E2 
+		case 34: // E606F2A
+		{
+			printk("ESD/ISD DSM\n");
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD2_CLK__SD2_CLK_DSM);
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD2_CMD__SD2_CMD_DSM);
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD2_D0__SD2_D0_DSM);
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD2_D1__SD2_D1_DSM);
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD2_D2__SD2_D2_DSM);
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD2_D3__SD2_D3_DSM);
+			
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD1_CLK__SD1_CLK_DSM);
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD1_CMD__SD1_CMD_DSM);
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD1_D0__SD1_D0_DSM);
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD1_D1__SD1_D1_DSM);
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD1_D2__SD1_D2_DSM);
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD1_D3__SD1_D3_DSM);
+		}
+		break;
+		case 35: // E606F2B
+		{
+			printk("Set ESD/eMMC DSM\n");
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD3_CMD__SD3_CMD_DSM);
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD3_CLK__SD3_CLK_DSM);
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD3_D0__SD3_D0_DSM);
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD3_D1__SD3_D1_DSM);
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD3_D2__SD3_D2_DSM);
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD3_D3__SD3_D3_DSM);
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD3_D4__SD3_D4_DSM);
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD3_D5__SD3_D5_DSM);
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD3_D6__SD3_D6_DSM);
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD3_D7__SD3_D7_DSM);
+						
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD1_CLK__SD1_CLK_DSM);
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD1_CMD__SD1_CMD_DSM);
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD1_D0__SD1_D0_DSM);
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD1_D1__SD1_D1_DSM);
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD1_D2__SD1_D2_DSM);
+			mxc_iomux_v3_setup_pad(MX50_PAD_SD1_D3__SD1_D3_DSM);
+		}
+		break;
 		default :
 		break;
 	}
@@ -1929,9 +2260,17 @@ static int gpio_initials(void)
 	// WIFI_1V8_ON
 		
 	// WIFI_RST
-	mxc_iomux_v3_setup_pad(MX50_PAD_SD2_D6__GPIO_5_14);
-	gpio_request(GPIO_WIFI_RST, "wifi_rst");
-	gpio_direction_output(GPIO_WIFI_RST,0);
+	if (35==gptHWCFG->m_val.bPCB) {
+		printk ("[%s-%d] set wifi_rst to MX50_PAD_ECSPI2_MOSI__GPIO_4_17 \n",__func__,__LINE__);
+		mxc_iomux_v3_setup_pad(MX50_PAD_ECSPI2_MOSI__GPIO_4_17);
+		gw_gpio_wifi_rst = GPIO_WIFI_RST_4_17;
+	}
+	else {
+		mxc_iomux_v3_setup_pad(MX50_PAD_SD2_D6__GPIO_5_14);
+		gw_gpio_wifi_rst = GPIO_WIFI_RST;
+	}
+	gpio_request(gw_gpio_wifi_rst, "wifi_rst");
+	gpio_direction_output(gw_gpio_wifi_rst,0);
 	
 	// WIFI_IRQ 
 	mxc_iomux_v3_setup_pad(MX50_PAD_CSPI_SCLK__GPIO_4_8);
@@ -1994,20 +2333,31 @@ static int gpio_initials(void)
   gpio_request(EIM_RDY, "eim-rdy");
   gpio_direction_input(EIM_RDY);
 
+	// NTX_GPIO_KEYS
+  if(NTXHWCFG_TST_FLAG(gptHWCFG->m_val.bPCB_Flags,0)){
+		if(gptHWCFG->m_val.bPCB == 30) {  // E606E2
+			mxc_iomux_v3_setup_pad(MX50_PAD_EPDC_BDR0__GPIO_4_23);
+				
+			mxc_iomux_v3_setup_pad(MX50_PAD_KEY_COL0__GPIO_4_0);
+			gpio_request(GPIO_KEY_COL_0, "GPIO_KEY_COL_0");
+			gpio_direction_output(GPIO_KEY_COL_0,0);
+		
+			mxc_iomux_v3_setup_pad(MX50_PAD_KEY_COL1__GPIO_4_2);
+			gpio_request(GPIO_KEY_COL_1, "GPIO_KEY_COL_1");
+			gpio_direction_output(GPIO_KEY_COL_1,0);
+  	
+  		mxc_iomux_v3_setup_pad(MX50_PAD_KEY_ROW0__GPIO_4_1);
+		}else if(gptHWCFG->m_val.bPCB == 28) {  // E606C2			
+			mxc_iomux_v3_setup_pad(MX50_PAD_KEY_COL0__GPIO_4_0);
+			gpio_request(GPIO_KEY_COL_0, "GPIO_KEY_COL_0");
+			gpio_direction_output(GPIO_KEY_COL_0,0);
+  	
+  		mxc_iomux_v3_setup_pad(MX50_PAD_KEY_ROW0__GPIO_4_1);
+		}else if((gptHWCFG->m_val.bPCB == 34) || (gptHWCFG->m_val.bPCB == 35)) {  // E606F2
 
-	// ESD_WP 
-
-#ifdef NTX_GPIO_KEYS //[
-
-  // Hall Sensor key .
-	if(gptHWCFG->m_val.bHallSensor) {
-		mxc_iomux_v3_setup_pad(MX50_PAD_SD3_D5__GPIO_5_25);
-  	gpio_request(HALLSENSOR_KEY, "HALLSENSOR_KEY");
-  	gpio_direction_input(HALLSENSOR_KEY);
-	}
-
-#endif //] NTX_GPIO_KEYS
-
+  		mxc_iomux_v3_setup_pad(MX50_PAD_KEY_ROW0__GPIO_4_1);
+		}
+  }
 
 	// DCIN/MSP_INT#
 	mxc_iomux_v3_setup_pad(MX50_PAD_CSPI_SS0__GPIO_4_11);
@@ -2115,18 +2465,16 @@ void ntx_gpio_suspend (void)
 	if (gSleep_Mode_Suspend && (4 != gptHWCFG->m_val.bTouchType)) {
 
 		mdelay (20);
-		disable_irq(gpio_to_irq(C_TOUCH_INT));
-		gpio_direction_output(C_TOUCH_INT, 0);
-		
-		mdelay (20);
-		if (2 == check_hardware_name()) {
-			disable_irq(gpio_to_irq(E50602_G_SENSOR_INT));
-			gpio_direction_output(E50602_G_SENSOR_INT, 0);
+		if (35==gptHWCFG->m_val.bPCB) {
+			disable_irq(gpio_to_irq(C_TOUCH_INT_5_13));
+			gpio_direction_output(C_TOUCH_INT_5_13, 0);
 		}
 		else {
-			disable_irq(gpio_to_irq(G_SENSOR_INT));
-			gpio_direction_output(G_SENSOR_INT, 0);
+			disable_irq(gpio_to_irq(C_TOUCH_INT));
+			gpio_direction_output(C_TOUCH_INT, 0);
 		}
+		
+		mdelay (20);
 		
 		mxc_iomux_v3_setup_pad(MX50_PAD_I2C1_SDA__GPIO_6_19);
 		gpio_request((5*32+19), "GPIO_6_19");
@@ -2137,23 +2485,29 @@ void ntx_gpio_suspend (void)
 		gpio_direction_output((5*32+18),0);
 		
 #ifndef DIGITIZER_TEST
-		gpio_direction_output(TOUCH_EN, 0);
-		gpio_direction_output(TOUCH_RST, 0);
-		gpio_direction_output(TOUCH_PWR, 1);
+		if (35==gptHWCFG->m_val.bPCB) {		// E606FXB .
+			gpio_direction_output(TOUCH_RST_5_12, 0);
+			gpio_direction_output(TP_PWEN, 0);
+		}
+		else {
+			gpio_direction_output(TOUCH_EN, 0);
+			gpio_direction_output(TOUCH_RST, 0);
+			gpio_direction_output(TOUCH_PWR, 1);
+		}
 #endif
 	}
-
+	
 	// turn off wifi power 
 #ifndef _WIFI_ALWAYS_ON_
 	gpio_direction_input(GPIO_WIFI_3V3);
-	gpio_direction_output(GPIO_WIFI_RST,0);
+	gpio_direction_output(gw_gpio_wifi_rst,0);
 #endif
 
 	// turn off EPD power
 	//gpio_direction_output(GPIO_PWRALL,0);
 
 	// turn off audio power
-	gpio_direction_input(GPIO_AUDIO_PWR);
+	//gpio_direction_input(GPIO_AUDIO_PWR);
 
 	// MX50_PAD_PWM2__GPIO_6_25
 	gpio_request((5*32+25), "GPIO_6_25");
@@ -2164,6 +2518,29 @@ void ntx_gpio_suspend (void)
 	// MX50_PAD_I2C2_SCL__GPIO_6_20
 	gpio_request((5*32+20), "GPIO_6_20");
 	gpio_direction_output((5*32+20),0);
+
+	// turn off internal SD power
+	if (gSleep_Mode_Suspend&&(35==gptHWCFG->m_val.bPCB || 34==gptHWCFG->m_val.bPCB)){
+		if(35==gptHWCFG->m_val.bPCB) {
+			int i;
+			mxc_iomux_v3_setup_multiple_pads(mx50_sd3_emmc_disable_pads, gdw_mx50_sd3_emmc_disable_pads);
+			
+			for(i=0;i<ARRAY_SIZE(mx50_sd3_emmc_gpioA);i++) {
+				gpio_direction_input(mx50_sd3_emmc_gpioA[i]);
+			}
+		}
+		else if(34==gptHWCFG->m_val.bPCB) {
+			mxc_iomux_v3_setup_multiple_pads(mx50_sd1_disable_pads, \
+					ARRAY_SIZE(mx50_sd1_disable_pads));
+			
+			int i;
+			for(i=0;i<ARRAY_SIZE(mx50_sd1_gpioA);i++) {
+				gpio_direction_input(mx50_sd1_gpioA[i]);
+			}
+		}		
+		tps65185_ONOFF(0);
+		gpio_direction_output(SPD_EN,0);
+	}
 
 	
 	gpio_set_value (GPIO_CHG_LED, 1);
@@ -2181,35 +2558,52 @@ void ntx_gpio_resume (void)
 	__raw_writel(gUart2_ucr1, ioremap(MX53_BASE_ADDR(UART2_BASE_ADDR), SZ_4K)+0x80);
 	__raw_writel(0x00058000, apll_base + MXC_ANADIG_MISC_CLR);
 	
+	// turn on internal SD power
+if (gSleep_Mode_Suspend&&(35==gptHWCFG->m_val.bPCB || 34==gptHWCFG->m_val.bPCB)){
+			if(35==gptHWCFG->m_val.bPCB) {
+			mxc_iomux_v3_setup_multiple_pads(mx50_sd3_emmc_enable_pads, gdw_mx50_sd3_emmc_enable_pads);
+		}
+		else if(34==gptHWCFG->m_val.bPCB) {
+			mxc_iomux_v3_setup_multiple_pads(mx50_sd1_enable_pads, \
+				ARRAY_SIZE(mx50_sd1_enable_pads));
+		}
+		tps65185_ONOFF(1);
+		gpio_direction_output(SPD_EN,1);
+	}
 //	if (gSleep_Mode_Suspend && (1 != check_hardware_name()) && (10 != check_hardware_name()) && (14 != check_hardware_name())) {
 	if (gSleep_Mode_Suspend && (4 != gptHWCFG->m_val.bTouchType)) {
 #ifndef DIGITIZER_TEST
-		gpio_direction_output(TOUCH_PWR, 0);
-		gpio_direction_output(TOUCH_EN, 1);
-		gpio_direction_output(TOUCH_RST, 1);
+		if(35==gptHWCFG->m_val.bPCB){ 			// E606FXB .
+			gpio_direction_output(TP_PWEN, 1);
+			gpio_direction_output(TOUCH_RST_5_12, 1);
+		}
+		else{
+			if(34==gptHWCFG->m_val.bPCB) 			// E606FXA .
+				gpio_direction_output(TP_PWEN, 1);
+			else
+				gpio_direction_output(TOUCH_PWR, 0);
+			gpio_direction_output(TOUCH_EN, 1);
+			gpio_direction_output(TOUCH_RST, 1);
+		}
 #endif
 		gpio_free(5*32+18);
 		gpio_free(5*32+19);
 		mxc_iomux_v3_setup_pad(MX50_PAD_I2C1_SCL__I2C1_SCL);
 		mxc_iomux_v3_setup_pad(MX50_PAD_I2C1_SDA__I2C1_SDA);
 		mdelay (50);
-		gpio_direction_input(C_TOUCH_INT);
-		enable_irq(gpio_to_irq(C_TOUCH_INT));
-		if (2 == check_hardware_name()) {
-			gpio_direction_input(E50602_G_SENSOR_INT);
-			enable_irq(gpio_to_irq(E50602_G_SENSOR_INT));
+		if (35==gptHWCFG->m_val.bPCB) {
+			gpio_direction_input(C_TOUCH_INT_5_13);
+			enable_irq(gpio_to_irq(C_TOUCH_INT_5_13));
 		}
 		else {
-			gpio_direction_input(G_SENSOR_INT);
-			enable_irq(gpio_to_irq(G_SENSOR_INT));
+			gpio_direction_input(C_TOUCH_INT);
+			enable_irq(gpio_to_irq(C_TOUCH_INT));
 		}
+
 	}
 	
 #if 1	
-	if ((6 == check_hardware_name()) || (2 == check_hardware_name())) 		// E60632 || E50602
-		g_power_key_pressed = (gpio_get_value (GPIO_PWR_SW))?1:0;	// POWER key
-	else
-		g_power_key_pressed = (gpio_get_value (GPIO_PWR_SW))?0:1;	// POWER key
+	g_power_key_pressed = power_key_status();	// POWER key
 #endif
 
 	// turn on audio power
@@ -2262,7 +2656,12 @@ void ntx_msp430_i2c_force_release (void)
 }
 
 void ntx_machine_restart(char mode, const char *cmd)
-{
+{	
+	if(0!=gptHWCFG->m_val.bFrontLight){
+		msp430_write (0xA3, 0); 
+		msleep (1200);		
+		gpio_direction_input(FL_EN);
+	}
 	while (1) {
 		printk("Kernel---System reset ---\n");
 		gKeepPowerAlive = 0;
@@ -2283,27 +2682,49 @@ static int __init initDriver(void)
 
     gpio_initials();
 
+	gLastBatTick = jiffies;
 
-	#ifdef NTX_GPIO_KEYS //[
-	
-	
-	if(gptHWCFG->m_val.bHallSensor) {
-		ntx_gpio_buttons[gi_ntx_gpio_buttons_total].code=KEY_F1;
-		ntx_gpio_buttons[gi_ntx_gpio_buttons_total].gpio=HALLSENSOR_KEY;
-		ntx_gpio_buttons[gi_ntx_gpio_buttons_total].active_low=1;
-		ntx_gpio_buttons[gi_ntx_gpio_buttons_total].type=EV_KEY;
-		ntx_gpio_buttons[gi_ntx_gpio_buttons_total].wakeup=1;
-		ntx_gpio_buttons[gi_ntx_gpio_buttons_total].debounce_interval=500;
+	//NTX_GPIO_KEYS //[
+    if(NTXHWCFG_TST_FLAG(gptHWCFG->m_val.bPCB_Flags,0)){
+		if(gptHWCFG->m_val.bPCB == 30) {   //E606E2
+			ntx_gpio_buttons[gi_ntx_gpio_buttons_total].code=KEY_FL;
+			ntx_gpio_buttons[gi_ntx_gpio_buttons_total].gpio=GPIO_TP56;
+			ntx_gpio_buttons[gi_ntx_gpio_buttons_total].active_low=1;
+			ntx_gpio_buttons[gi_ntx_gpio_buttons_total].type=EV_KEY;
+			ntx_gpio_buttons[gi_ntx_gpio_buttons_total].wakeup=1;
+			ntx_gpio_buttons[gi_ntx_gpio_buttons_total].debounce_interval=30;
 
-		++gi_ntx_gpio_buttons_total;
-		//ASSERT(gi_ntx_gpio_buttons_total<NTX_GPIO_KEYS_MAX);
+			++gi_ntx_gpio_buttons_total;
+			//ASSERT(gi_ntx_gpio_buttons_total<NTX_GPIO_KEYS_MAX);
+		
+			ntx_gpio_buttons[gi_ntx_gpio_buttons_total].code=KEY_F3;  // KEY_HOME 61
+			ntx_gpio_buttons[gi_ntx_gpio_buttons_total].gpio=GPIO_KEY_ROW_0;
+			ntx_gpio_buttons[gi_ntx_gpio_buttons_total].active_low=1;
+			ntx_gpio_buttons[gi_ntx_gpio_buttons_total].type=EV_KEY;
+			ntx_gpio_buttons[gi_ntx_gpio_buttons_total].wakeup=1;
+			ntx_gpio_buttons[gi_ntx_gpio_buttons_total].debounce_interval=30;
+
+			++gi_ntx_gpio_buttons_total;
+			//ASSERT(gi_ntx_gpio_buttons_total<NTX_GPIO_KEYS_MAX);
+		}
+		if(gptHWCFG->m_val.bPCB == 28 || gptHWCFG->m_val.bPCB == 34 || gptHWCFG->m_val.bPCB == 35) {   //E606C2, E606F2	
+			ntx_gpio_buttons[gi_ntx_gpio_buttons_total].code=KEY_FL; 
+			ntx_gpio_buttons[gi_ntx_gpio_buttons_total].gpio=GPIO_KEY_ROW_0;
+			ntx_gpio_buttons[gi_ntx_gpio_buttons_total].active_low=1;
+			ntx_gpio_buttons[gi_ntx_gpio_buttons_total].type=EV_KEY;
+			ntx_gpio_buttons[gi_ntx_gpio_buttons_total].wakeup=1;
+			ntx_gpio_buttons[gi_ntx_gpio_buttons_total].debounce_interval=30;
+
+			++gi_ntx_gpio_buttons_total;
+			//ASSERT(gi_ntx_gpio_buttons_total<NTX_GPIO_KEYS_MAX);
+		}
+
+		ntx_gpio_key_data.nbuttons = gi_ntx_gpio_buttons_total;
+		if(gi_ntx_gpio_buttons_total>0) {
+			mxc_register_device(&ntx_gpio_key_device, &ntx_gpio_key_data);
+		}
 	}
-
-	ntx_gpio_key_data.nbuttons = gi_ntx_gpio_buttons_total;
-	if(gi_ntx_gpio_buttons_total>0) {
-		mxc_register_device(&ntx_gpio_key_device, &ntx_gpio_key_data);
-	}
-	#endif //] NTX_GPIO_KEYS
+	//] NTX_GPIO_KEYS
     
 	//start a kernel thread;
 	ret = kernel_thread(LED_Thread,NULL,CLONE_KERNEL);

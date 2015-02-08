@@ -1798,7 +1798,6 @@ static int do_mode_sense(struct fsg_dev *fsg, struct fsg_buffhd *bh)
 
 #else //][!
 
-	
 	int		mscmnd = fsg->cmnd[0];
 	u8		*buf = (u8 *) bh->buf;
 	u8		*buf0 = buf;
@@ -1874,9 +1873,7 @@ static int do_mode_sense(struct fsg_dev *fsg, struct fsg_buffhd *bh)
 	else
 		put_unaligned_be16(len - 2, buf0);
 	return len;
-
-#endif//]
-
+#endif //]
 }
 
 
@@ -1894,6 +1891,7 @@ static int do_start_stop(struct fsg_dev *fsg)
 	loej = fsg->cmnd[4] & 0x02;
 	start = fsg->cmnd[4] & 0x01;
 
+#ifdef CONFIG_USB_FILE_STORAGE_TEST
 	if ((fsg->cmnd[1] & ~0x01) != 0 ||		// Mask away Immed
 			(fsg->cmnd[4] & ~0x03) != 0) {	// Mask LoEj, Start
 		curlun->sense_data = SS_INVALID_FIELD_IN_CDB;
@@ -1914,7 +1912,6 @@ static int do_start_stop(struct fsg_dev *fsg)
 			fsg_lun_close(curlun);
 			up_write(&fsg->filesem);
 			down_read(&fsg->filesem);
-			kobject_uevent_env(&fsg->gadget->dev.parent->kobj, KOBJ_OFFLINE, NULL);
 		}
 	} else {
 
@@ -1925,7 +1922,7 @@ static int do_start_stop(struct fsg_dev *fsg)
 			return -EINVAL;
 		}
 	}
-
+#endif
 	return 0;
 }
 

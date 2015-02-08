@@ -699,4 +699,13 @@ config TOUCHSCREEN_IT7260_TOUCH
 	  This driver can also be built as a module.  If so, the module
 	  will be called elan_touch.
 
+config TOUCHSCREEN_MSP430
+       tristate "NTX MSP430 touch"
+       depends on I2C
+       help
+        Say Y here if you have a NTX MSP430 back cover touch
+        controller
+
+        If unsure, say N.
+
 endif

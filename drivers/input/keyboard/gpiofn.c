@@ -25,8 +25,8 @@
 static const char gszModuleName[]="GPIOFN";
 
 //static struct work_struct gtGPIOFN_Work;
-static struct workqueue_struct *gptGPIOFN_WQ;
-
+static struct workqueue_struct *gptGPIOFN_WQ=0;
+static int gIsGPIOFN_inited=0;
 //static LIST_HEAD( gpio_data_list );
 
 static void gpiofn_wq_func(struct work_struct *work)
@@ -91,7 +91,12 @@ static void gpio_int_checker(unsigned long I_dwParam)
 		else {
 			if(ptGPIO_Data->pfnGPIO) {
 				GALLEN_DBGLOCAL_RUNLOG(3);
-				queue_work(gptGPIOFN_WQ,&ptGPIO_Data->tWork);
+				if ( gptGPIOFN_WQ ) {
+					queue_work(gptGPIOFN_WQ,&ptGPIO_Data->tWork);
+				}
+				else {
+					WARNING_MSG("%s() fail ! you should call gpiofn_init() once !\n",__FUNCTION__);
+				}
 			}
 		}
 		ptGPIO_Data->iCurrentGPIOVal = iGPIOVal;
@@ -114,7 +119,12 @@ static void gpio_int_checker(unsigned long I_dwParam)
 				if(ptGPIO_Data->pfnGPIO) {
 					GALLEN_DBGLOCAL_RUNLOG(7);
 					ptGPIO_Data->iCurrentGPIOVal = iGPIOVal;
-					queue_work(gptGPIOFN_WQ,&ptGPIO_Data->tWork);
+					if(gptGPIOFN_WQ) {
+						queue_work(gptGPIOFN_WQ,&ptGPIO_Data->tWork);
+					}
+					else {
+						WARNING_MSG("%s() fail ! you should call gpiofn_init() once !\n",__FUNCTION__);
+					}
 				}
 			}
 		}
@@ -275,7 +285,11 @@ int gpiofn_unregister(GPIODATA *I_ptGPIO_Data)
 int gpiofn_init(void)
 {
 	//INIT_LIST_HEAD(&gpio_data_list);
-	
+	if(gIsGPIOFN_inited>0) {
+		WARNING_MSG("[WARNING] %s() >1 (%d) !\n",__FUNCTION__,gIsGPIOFN_inited);
+		return -2;
+	}
+
 	//gptGPIOFN_WQ = create_singlethread_workqueue(gszModuleName);
 	gptGPIOFN_WQ = create_rt_workqueue(gszModuleName);
 	if(!gptGPIOFN_WQ) {
@@ -284,16 +298,22 @@ int gpiofn_init(void)
 		return -1;
 	}
 	
+	++gIsGPIOFN_inited;
 	//INIT_WORK(&gtGPIOFN_Work, gpiofn_wq_func);
-	
 	return 0;
 }
 
 int gpiofn_release(void)
 {
+	if(gIsGPIOFN_inited<=0) {
+		WARNING_MSG("[WARNING] %s() <0 (%d)!\n",__FUNCTION__,gIsGPIOFN_inited);
+		return -1;
+	}
+
 	if(gptGPIOFN_WQ) {
 		flush_workqueue(gptGPIOFN_WQ);
 		destroy_workqueue(gptGPIOFN_WQ);
 	}
+	--gIsGPIOFN_inited;
 	return 0;
 }

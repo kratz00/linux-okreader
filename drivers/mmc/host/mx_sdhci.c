@@ -1174,13 +1174,7 @@ static void sdhci_enable_sdio_irq(struct mmc_host *mmc, int enable)
 
 	spin_lock_irqsave(&host->lock, flags);
 
-	if (enable) {
-		if (host->sdio_enable++)
-			goto exit_unlock;
-	} else {
-		if (--(host->sdio_enable))
-			goto exit_unlock;
-	}
+	host->sdio_enable = enable;
 
 	ier = readl(host->ioaddr + SDHCI_INT_ENABLE);
 	prot = readl(host->ioaddr + SDHCI_HOST_CONTROL);
@@ -1215,7 +1209,7 @@ static void sdhci_enable_sdio_irq(struct mmc_host *mmc, int enable)
 	writel(prot, host->ioaddr + SDHCI_HOST_CONTROL);
 
 	mmiowb();
-      exit_unlock:
+
 	spin_unlock_irqrestore(&host->lock, flags);
 }
 
@@ -1283,6 +1277,31 @@ static void sdhci_finish_worker(struct work_struct *work)
 	del_timer(&host->timer);
 
 	mrq = host->mrq;
+
+	if (!mrq->cmd->data && !mrq->cmd->error
+			&& (mrq->cmd->flags & MMC_RSP_BUSY)) {
+		int timeout = 250000;
+
+		/* DDTS ENGcm03648.
+		 * if it's a cmd with busy, we should disable auto clock
+		 * gate and we need to poll dat0 until it's high which means
+		 * data bus is idle.
+		 * This sdhci driver disable all auto clock gate bits by
+		 * default, so we skip changing auto clock gate bits.
+		 * Be careful if auto clock gate bits logic is changed!
+		 * Poll on DATA0 line for cmd with busy signal for 250 ms
+		 */
+		while (timeout > 0 && !(readl(host->ioaddr + \
+				SDHCI_PRESENT_STATE) & SDHCI_DAT0_IDLE)) {
+			udelay(1);
+			timeout--;
+		}
+
+		if (timeout <= 0) {
+			DBG(KERN_ERR "Timeout waiting for DAT0 to go high!\n");
+			mrq->cmd->error = -ETIMEDOUT;
+		}
+	}
 
 	/*
 	 * The controller needs a reset of internal state machines
@@ -1790,6 +1809,7 @@ static int sdhci_suspend(struct platform_device *pdev, pm_message_t state)
 	struct sdhci_chip *chip;
 	int i, ret;
 	int iHWID;
+	int skip_dev_id; // ESD dev id .
 
 	chip = dev_get_drvdata(&pdev->dev);
 	if (!chip)
@@ -1798,13 +1818,35 @@ static int sdhci_suspend(struct platform_device *pdev, pm_message_t state)
 	DBG("Suspending...\n");
 	iHWID = check_hardware_name();
 
-	if ( (9!=iHWID) && (1 == pdev->id)) {
-		// skip external SD suspend .
+	if (9==iHWID) {
+		// E5061X : no ESD.
+		
+	}
+	else {
+		if(11==iHWID || 34==iHWID || 35==iHWID) {
+			// E606CX . E606FXA/B
+			skip_dev_id=0 ;//ESD @ SD1 .
+		}
+		else {
+			skip_dev_id=1 ;//ESD @ SD2 .
+		}
+
+		if (skip_dev_id == pdev->id) {
+			// skip external SD suspend .
 		 
-		printk ("[%s-%d] skip suspend for mmc%d\n",__func__,__LINE__,pdev->id);
-		if (!gSleep_Mode_Suspend)
-			enable_irq_wake(chip->hosts[0]->detect_irq);	// Joseph 20110518
-		return 0;	// Joseph 100323 test
+			printk ("[%s-%d] skip suspend for ESD (mmc%d)\n",
+					__func__,__LINE__,pdev->id);
+
+#if 1
+
+			if (!gSleep_Mode_Suspend) {
+				// enable wakeup device from ESD ,when system not in sleep mode .
+				enable_irq_wake(platform_get_irq(pdev, 1));	
+			}
+#endif
+
+			return 0;	// Joseph 100323 test
+		}
 	}
 
 	for (i = 0; i < chip->num_slots; i++) {
@@ -1832,7 +1874,7 @@ static int sdhci_resume(struct platform_device *pdev)
 	struct sdhci_chip *chip;
 	int i, ret;
 	int iHWID;
-
+	int skip_dev_id;// ESD dev id .
 
 	chip = dev_get_drvdata(&pdev->dev);
 	if (!chip)
@@ -1841,13 +1883,32 @@ static int sdhci_resume(struct platform_device *pdev)
 	DBG("Resuming...\n");
 	iHWID = check_hardware_name();
 
-	if ( (9!=iHWID) && (1 == pdev->id) ) {
-		// external SD .
-		
-		printk ("[%s-%d] skip resume for mmc%d\n",__func__,__LINE__,pdev->id);
-		if (!gSleep_Mode_Suspend)
-			disable_irq_wake(chip->hosts[0]->detect_irq);	// Joseph 20110518
-		return 0;	// Joseph 100323 test
+	if (9==iHWID) {
+		// E5061X : no ESD.
+	}
+	else { 
+		if(11==iHWID || 34==iHWID || 35==iHWID) {
+			// E606CX . E606FXA/B
+			skip_dev_id=0; // ESD @ SD1
+		}
+		else {
+			skip_dev_id=1; // ESD @ SD2
+		}
+
+		if(skip_dev_id == pdev->id)  {
+			// external SD .
+			printk ("[%s-%d] skip resume for ESD (mmc%d)\n",
+					__func__,__LINE__,pdev->id);
+
+#if 1 //
+
+			if (!gSleep_Mode_Suspend) {
+				disable_irq_wake(platform_get_irq(pdev, 1));	// Joseph 20110518
+			}
+#endif
+
+			return 0;	// Joseph 100323 test
+		}
 	}
 
 	for (i = 0; i < chip->num_slots; i++) {

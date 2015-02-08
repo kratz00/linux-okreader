@@ -48,6 +48,7 @@ int fake_s1d13522_check_var(struct fb_var_screeninfo *var, struct fb_info *info)
 int fake_s1d13522_setcolreg(unsigned regno, unsigned red, unsigned green,
                                 unsigned blue, unsigned transp, struct fb_info *info);
 
+void fb_capture(EPDFB_DC *pDC,int iBitsTo,EPDFB_ROTATE_T I_tRotateDegree,char *pszFileName);
 
 
 

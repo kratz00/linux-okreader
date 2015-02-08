@@ -24,6 +24,8 @@
 #include <linux/pmic_adc.h>
 #include <linux/pmic_status.h>
 #include <linux/reboot.h>
+#include "ntx_hwconfig.h"
+extern volatile NTX_HWCONFIG *gptHWCFG;
 
 #define BIT_CHG_VOL_LSH		0
 #define BIT_CHG_VOL_WID		3
@@ -831,8 +833,20 @@ static int battery_get_capacity(int now_voltage_uV)
 
 void ntx_charger_online_event_callback(void)
 {
-	mc13892_charger_update_status(g_ntx_bat_di);
-//	mc13892_battery_update_status(g_ntx_bat_di);
+	if(35==gptHWCFG->m_val.bPCB) {
+		if (chg_wq) {	// do nothing if interrupt triggered before charger probe.
+		cancel_rearming_delayed_workqueue(chg_wq, &chg_work);
+		queue_delayed_work(chg_wq, &chg_work, HZ/40);
+		}
+	}else {
+		if(g_ntx_bat_di) {
+			mc13892_charger_update_status(g_ntx_bat_di);
+//		mc13892_battery_update_status(g_ntx_bat_di);
+		}
+		else {
+			printk(KERN_ERR "skip %s(),g_ntx_bat_di is null !\n",__FUNCTION__);
+		}
+	}
 }
 EXPORT_SYMBOL(ntx_charger_online_event_callback);
 
@@ -844,10 +858,8 @@ static int mc13892_battery_get_property(struct power_supply *psy,
 	struct mc13892_dev_info *di = to_mc13892_dev_info(psy);
 	switch (psp) {
 	case POWER_SUPPLY_PROP_STATUS:
-		if (di->battery_status == POWER_SUPPLY_STATUS_UNKNOWN) {
-			mc13892_charger_update_status(di);
-			mc13892_battery_update_status(di);
-		}
+		mc13892_charger_update_status(di);
+		mc13892_battery_update_status(di);
 		val->intval = di->battery_status;
 		return 0;
 	default:

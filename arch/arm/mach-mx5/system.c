@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008-2011 Freescale Semiconductor, Inc. All Rights Reserved.
+ * Copyright (C) 2008-2012 Freescale Semiconductor, Inc. All Rights Reserved.
  */
 
 /*
@@ -220,6 +220,9 @@ void arch_idle(void)
 				/* Set the ARM-PODF divider to 1. */
 				cpu_podf = __raw_readl(MXC_CCM_CACRR);
 				__raw_writel(0x01, MXC_CCM_CACRR);
+				while (__raw_readl(MXC_CCM_CDHIPR) &
+					MXC_CCM_CDHIPR_ARM_PODF_BUSY)
+					;
 
 				}
 
@@ -232,6 +235,9 @@ void arch_idle(void)
 				 * to the original.
 				 */
 				__raw_writel(cpu_podf, MXC_CCM_CACRR);
+				while (__raw_readl(MXC_CCM_CDHIPR) &
+					MXC_CCM_CDHIPR_ARM_PODF_BUSY)
+					;
 				clk_set_parent(pll1_sw_clk, pll1_main_clk);
 
 				}

@@ -1,5 +1,5 @@
 /*
- * Copyright 2008-2011 Freescale Semiconductor, Inc. All Rights Reserved.
+ * Copyright 2008-2013 Freescale Semiconductor, Inc. All Rights Reserved.
  */
 
 /*
@@ -41,8 +41,13 @@
 #include <linux/input.h>
 #include <linux/platform_device.h>
 #include <linux/cpufreq.h>
+#include <asm/cpu.h>
 #include <mach/hardware.h>
 #include <mach/mxc_dvfs.h>
+
+#define GDEBUG 0
+#include <linux/gallen_dbg.h>
+
 
 #define MXC_DVFSTHRS_UPTHR_MASK               0x0FC00000
 #define MXC_DVFSTHRS_UPTHR_OFFSET             22
@@ -94,7 +99,11 @@ static int dvfs_config_setpoint;
 static int maxf;
 static int minf;
 
+#if defined(CONFIG_CPU_FREQ)
 extern int cpufreq_trig_needed;
+#else
+int cpufreq_trig_needed;
+#endif
 struct timeval core_prev_intr;
 
 void dump_dvfs_core_regs(void);
@@ -114,6 +123,24 @@ extern int cpu_wp_nr;
 extern struct cpu_wp *(*get_cpu_wp)(int *wp);
 #endif
 struct dvfs_wp *(*get_dvfs_core_wp)(int *wp);
+
+static inline unsigned long dvfs_cpu_jiffies(unsigned long old, u_int div,
+					u_int mult)
+{
+#if BITS_PER_LONG == 32
+
+	u64 result = ((u64) old) * ((u64) mult);
+	do_div(result, div);
+	return (unsigned long) result;
+
+#elif BITS_PER_LONG == 64
+
+	unsigned long result = old * ((u64) mult);
+	result /= div;
+	return result;
+
+#endif
+}
 
 enum {
 	FSVAI_FREQ_NOCHANGE = 0x0,
@@ -172,9 +199,9 @@ static int set_cpu_freq(int wp)
 	unsigned long rate = 0;
 	int gp_volt = 0;
 	u32 reg;
-	u32 reg1;
 	u32 en_sw_dvfs = 0;
 	unsigned long flags;
+	volatile unsigned long dw_lp_cnt=0;
 
 	if (cpu_wp_tbl[wp].pll_rate != cpu_wp_tbl[old_wp].pll_rate) {
 		org_cpu_rate = clk_get_rate(cpu_clk);
@@ -231,9 +258,24 @@ static int set_cpu_freq(int wp)
 
 		reg |= MXC_GPCCNTR_STRT;
 		__raw_writel(reg, gpc_base + dvfs_data->gpc_cntr_offset);
-		while (__raw_readl(gpc_base + dvfs_data->gpc_cntr_offset)
-				& 0x4000)
+		dw_lp_cnt=0;
+		while (__raw_readl(gpc_base + dvfs_data->gpc_cntr_offset) 
+				& 0x4000) 
+		{
 			udelay(10);
+			if(++dw_lp_cnt>1000) {
+				printk("%s() : waiting for GPCCNTR over 1000 times!\n",__FUNCTION__);
+			}
+		}
+		DBG_MSG("%s() : waiting for GPCCNTR cnt=%d\n",__FUNCTION__,(int)dw_lp_cnt);
+
+		/* set software_dvfs_en bit back to original setting*/
+		reg = __raw_readl(ccm_base + dvfs_data->ccm_cdcr_offset);
+		reg &= ~(CCM_CDCR_SW_DVFS_EN);
+		reg |= en_sw_dvfs;
+		__raw_writel(reg, ccm_base + dvfs_data->ccm_cdcr_offset);
+		clk_set_rate(cpu_clk, rate);
+
 		spin_unlock_irqrestore(&mxc_dvfs_core_lock, flags);
 
 		if (rate < org_cpu_rate) {
@@ -246,28 +288,9 @@ static int set_cpu_freq(int wp)
 			}
 			udelay(dvfs_data->delay_time);
 		}
-		/* set software_dvfs_en bit back to original setting*/
-		reg = __raw_readl(ccm_base + dvfs_data->ccm_cdcr_offset);
-		reg &= ~(CCM_CDCR_SW_DVFS_EN);
-		reg |= en_sw_dvfs;
-		clk_set_rate(cpu_clk, rate);
 	} else {
 		podf = cpu_wp_tbl[wp].cpu_podf;
 		gp_volt = cpu_wp_tbl[wp].cpu_voltage;
-
-		/* Change arm_podf only */
-		/* set ARM_FREQ_SHIFT_DIVIDER */
-		reg = __raw_readl(ccm_base + dvfs_data->ccm_cdcr_offset);
-
-		/* Check if software_dvfs_en bit set */
-		if ((reg & CCM_CDCR_SW_DVFS_EN) != 0)
-			en_sw_dvfs = CCM_CDCR_SW_DVFS_EN;
-		else
-			en_sw_dvfs = 0x0;
-
-		reg &= ~(CCM_CDCR_SW_DVFS_EN | CCM_CDCR_ARM_FREQ_SHIFT_DIVIDER);
-		reg |= CCM_CDCR_ARM_FREQ_SHIFT_DIVIDER;
-		__raw_writel(reg, ccm_base + dvfs_data->ccm_cdcr_offset);
 
 		/* Get ARM_PODF */
 		reg = __raw_readl(ccm_base + dvfs_data->ccm_cacrr_offset);
@@ -293,24 +316,30 @@ static int set_cpu_freq(int wp)
 			vinc = 0;
 		}
 
+		spin_lock_irqsave(&mxc_dvfs_core_lock, flags);
+
+		/* Change arm_podf only */
+		/* set ARM_FREQ_SHIFT_DIVIDER */
+		reg = __raw_readl(ccm_base + dvfs_data->ccm_cdcr_offset);
+
+		/* Check if software_dvfs_en bit set */
+		if ((reg & CCM_CDCR_SW_DVFS_EN) != 0)
+			en_sw_dvfs = CCM_CDCR_SW_DVFS_EN;
+		else
+			en_sw_dvfs = 0x0;
+
+		reg &= ~(CCM_CDCR_SW_DVFS_EN | CCM_CDCR_ARM_FREQ_SHIFT_DIVIDER);
+		reg |= CCM_CDCR_ARM_FREQ_SHIFT_DIVIDER;
+		__raw_writel(reg, ccm_base + dvfs_data->ccm_cdcr_offset);
+
+		reg = __raw_readl(ccm_base + dvfs_data->ccm_cacrr_offset);	// Joseph 20130717
 		arm_podf = podf;
 		/* Set ARM_PODF */
 		reg &= 0xFFFFFFF8;
 		reg |= arm_podf;
-		spin_lock_irqsave(&mxc_dvfs_core_lock, flags);
 
-		reg1 = __raw_readl(ccm_base + dvfs_data->ccm_cdhipr_offset);
-		while (1) {
-			if ((reg1 & CCM_CDHIPR_ARM_PODF_BUSY) == 0) {
-				__raw_writel(reg,
-					ccm_base + dvfs_data->ccm_cacrr_offset);
-				break;
-			} else {
-				reg1 = __raw_readl(
-				ccm_base + dvfs_data->ccm_cdhipr_offset);
-				printk(KERN_DEBUG "ARM_PODF still in busy!!!!\n");
-			}
-		}
+		__raw_writel(reg, ccm_base + dvfs_data->ccm_cacrr_offset);
+
 		/* set VINC */
 		reg = __raw_readl(gpc_base + dvfs_data->gpc_vcr_offset);
 		reg &=
@@ -332,12 +361,22 @@ static int set_cpu_freq(int wp)
 		reg |= MXC_GPCCNTR_STRT;
 		__raw_writel(reg, gpc_base + dvfs_data->gpc_cntr_offset);
 
-		/* Wait for arm podf Enable */
+		/* Wait for arm podf changed */
 		while ((__raw_readl(gpc_base + dvfs_data->gpc_cntr_offset) &
 			MXC_GPCCNTR_STRT) == MXC_GPCCNTR_STRT) {
-			printk(KERN_DEBUG "Waiting arm_podf enabled!\n");
+			printk(KERN_DEBUG "Waiting for arm_podf changed!\n");
 			udelay(10);
 		}
+		/* No need to wait for !ARM_PODF_BUSY after ARM_PODF updated */
+		/* since GPC is used for ARM clock freq change */
+
+		/* Clear the ARM_FREQ_SHIFT_DIVIDER and */
+		/* set software_dvfs_en bit back to original setting*/
+		reg = __raw_readl(ccm_base + dvfs_data->ccm_cdcr_offset);
+		reg &= ~(CCM_CDCR_SW_DVFS_EN | CCM_CDCR_ARM_FREQ_SHIFT_DIVIDER);
+		reg |= en_sw_dvfs;
+		__raw_writel(reg, ccm_base + dvfs_data->ccm_cdcr_offset);
+
 		spin_unlock_irqrestore(&mxc_dvfs_core_lock, flags);
 
 		if (vinc == 0) {
@@ -350,22 +389,14 @@ static int set_cpu_freq(int wp)
 			}
 			udelay(dvfs_data->delay_time);
 		}
-
-		/* Clear the ARM_FREQ_SHIFT_DIVIDER and */
-		/* set software_dvfs_en bit back to original setting*/
-		reg = __raw_readl(ccm_base + dvfs_data->ccm_cdcr_offset);
-		reg &= ~(CCM_CDCR_SW_DVFS_EN | CCM_CDCR_ARM_FREQ_SHIFT_DIVIDER);
-		reg |= en_sw_dvfs;
-		__raw_writel(reg, ccm_base + dvfs_data->ccm_cdcr_offset);
 	}
-#if defined(CONFIG_CPU_FREQ)
-		cpufreq_trig_needed = 1;
-#endif
+
+	cpufreq_trig_needed = 1;
 	old_wp = wp;
 	return ret;
 }
 
-static int start_dvfs(void)
+int start_dvfs(void)
 {
 	u32 reg, cpu_rate;
 	unsigned long flags;
@@ -485,7 +516,8 @@ static irqreturn_t dvfs_irq(int irq, void *dev_id)
 	reg |= MXC_GPCCNTR_GPCIRQM | 0x1000000;
 	__raw_writel(reg, gpc_base + dvfs_data->gpc_cntr_offset);
 
-	schedule_delayed_work(&dvfs_core_handler, 0);
+	//schedule_delayed_work(&dvfs_core_handler, 0);
+	schedule_delayed_work(&dvfs_core_handler, 1);
 	return IRQ_HANDLED;
 }
 
@@ -497,14 +529,19 @@ static void dvfs_core_work_handler(struct work_struct *work)
 	int ret = 0;
 	int low_freq_bus_ready = 0;
 	int bus_incr = 0, cpu_dcr = 0;
+	unsigned long old_loops_per_jiffy;
+
+	GALLEN_DBGLOCAL_BEGIN();
 
 	low_freq_bus_ready = low_freq_bus_used();
+	curr_cpu = clk_get_rate(cpu_clk);
 
 	/* Check DVFS frequency adjustment interrupt status */
 	reg = __raw_readl(dvfs_data->membase + MXC_DVFSCORE_CNTR);
 	fsvai = (reg & MXC_DVFSCNTR_FSVAI_MASK) >> MXC_DVFSCNTR_FSVAI_OFFSET;
 	/* Check FSVAI, FSVAI=0 is error */
 	if (fsvai == FSVAI_FREQ_NOCHANGE) {
+		GALLEN_DBGLOCAL_RUNLOG(0);
 		/* Do nothing. Freq change is not required */
 		goto END;
 	}
@@ -513,15 +550,21 @@ static void dvfs_core_work_handler(struct work_struct *work)
 	/* If FSVAI indicate freq down,
 	   check arm-clk is not in lowest frequency*/
 	if (fsvai == FSVAI_FREQ_DECREASE) {
+		GALLEN_DBGLOCAL_RUNLOG(1);
 		if (curr_cpu == cpu_wp_tbl[cpu_wp_nr - 1].cpu_rate) {
+			GALLEN_DBGLOCAL_RUNLOG(2);
 			minf = 1;
-			if (low_bus_freq_mode)
+			if (low_bus_freq_mode) {
+				GALLEN_DBGLOCAL_RUNLOG(3);
 				goto END;
+			}
 		} else {
+			GALLEN_DBGLOCAL_RUNLOG(4);
 			/* freq down */
 			curr_wp++;
 			maxf = 0;
 			if (curr_wp >= cpu_wp_nr) {
+				GALLEN_DBGLOCAL_RUNLOG(5);
 				curr_wp = cpu_wp_nr - 1;
 				goto END;
 			}
@@ -530,16 +573,21 @@ static void dvfs_core_work_handler(struct work_struct *work)
 			dvfs_load_config(curr_wp);
 		}
 	} else {
+		GALLEN_DBGLOCAL_RUNLOG(6);
 		if (curr_cpu == cpu_wp_tbl[0].cpu_rate) {
+			GALLEN_DBGLOCAL_RUNLOG(7);
 			maxf = 1;
 			goto END;
 		} else {
+			GALLEN_DBGLOCAL_RUNLOG(8);
 			if (!high_bus_freq_mode &&
 				dvfs_config_setpoint == (cpu_wp_nr + 1)) {
+				GALLEN_DBGLOCAL_RUNLOG(9);
 				/* bump up LP freq first. */
 				bus_incr = 1;
 				dvfs_load_config(cpu_wp_nr);
 			} else {
+				GALLEN_DBGLOCAL_RUNLOG(10);
 				/* freq up */
 				curr_wp = 0;
 				maxf = 1;
@@ -552,24 +600,52 @@ static void dvfs_core_work_handler(struct work_struct *work)
 	low_freq_bus_ready = low_freq_bus_used();
 	if ((curr_wp == cpu_wp_nr - 1) && (!low_bus_freq_mode)
 	    && (low_freq_bus_ready) && !bus_incr) {
-		if (!minf)
+		GALLEN_DBGLOCAL_RUNLOG(11);
+		if (!minf) {
+			GALLEN_DBGLOCAL_RUNLOG(12);
 			set_cpu_freq(curr_wp);
+		}
 		/* If dvfs_core_wp is greater than cpu_wp_nr, it implies
 		 * we support LPAPM mode for this platform.
 		 */
 		if (dvfs_core_wp > cpu_wp_nr) {
+			GALLEN_DBGLOCAL_RUNLOG(13);
 			set_low_bus_freq();
 			dvfs_load_config(cpu_wp_nr + 1);
 		}
 	} else {
-		if (!high_bus_freq_mode)
+		GALLEN_DBGLOCAL_RUNLOG(14);
+		if (!high_bus_freq_mode) {
+			GALLEN_DBGLOCAL_RUNLOG(15);
 			set_high_bus_freq(1);
-		if (!bus_incr)
+		}
+		if (!bus_incr) {
+			GALLEN_DBGLOCAL_RUNLOG(16);
 			ret = set_cpu_freq(curr_wp);
+		}
 		bus_incr = 0;
 	}
 
-END:	/* Set MAXF, MINF */
+	printk("current wp=%d\n",curr_wp);
+
+	if (cpufreq_trig_needed == 1) {
+		GALLEN_DBGLOCAL_RUNLOG(17);
+		/*Fix loops-per-jiffy */
+		old_loops_per_jiffy = loops_per_jiffy;
+
+		loops_per_jiffy =
+			dvfs_cpu_jiffies(old_loops_per_jiffy,
+				curr_cpu/1000, clk_get_rate(cpu_clk) / 1000);
+
+#if defined(CONFIG_CPU_FREQ)
+		/* Fix CPU frequency for CPUFREQ. */
+		cpufreq_get(0);
+#endif
+		cpufreq_trig_needed = 0;
+	}
+
+END:
+	/* Set MAXF, MINF */
 	reg = __raw_readl(dvfs_data->membase + MXC_DVFSCORE_CNTR);
 	reg = (reg & ~(MXC_DVFSCNTR_MAXF_MASK | MXC_DVFSCNTR_MINF_MASK));
 	reg |= maxf << MXC_DVFSCNTR_MAXF_OFFSET;
@@ -588,12 +664,7 @@ END:	/* Set MAXF, MINF */
 	reg &= ~MXC_GPCCNTR_GPCIRQM;
 	__raw_writel(reg, gpc_base + dvfs_data->gpc_cntr_offset);
 
-#if defined(CONFIG_CPU_FREQ)
-	if (cpufreq_trig_needed == 1) {
-		cpufreq_trig_needed = 0;
-		cpufreq_update_policy(0);
-	}
-#endif
+	GALLEN_DBGLOCAL_END();
 }
 
 
@@ -605,6 +676,7 @@ void stop_dvfs(void)
 	u32 reg = 0;
 	unsigned long flags;
 	u32 curr_cpu;
+	unsigned long old_loops_per_jiffy;
 
 	if (dvfs_core_is_active) {
 
@@ -622,15 +694,24 @@ void stop_dvfs(void)
 
 		curr_cpu = clk_get_rate(cpu_clk);
 
-		if (curr_cpu != cpu_wp_tbl[curr_wp].cpu_rate) {
+		if (curr_cpu != cpu_wp_tbl[curr_wp].cpu_rate)
 			set_cpu_freq(curr_wp);
+
+		if (cpufreq_trig_needed == 1) {
+			/*Fix loops-per-jiffy */
+			old_loops_per_jiffy = loops_per_jiffy;
+
+			loops_per_jiffy =
+				dvfs_cpu_jiffies(old_loops_per_jiffy,
+					curr_cpu/1000,
+					clk_get_rate(cpu_clk) / 1000);
 #if defined(CONFIG_CPU_FREQ)
-			if (cpufreq_trig_needed == 1) {
-				cpufreq_trig_needed = 0;
-				cpufreq_update_policy(0);
-			}
+			/* Fix CPU frequency for CPUFREQ. */
+			cpufreq_get(0);
 #endif
+			cpufreq_trig_needed = 0;
 		}
+
 		spin_lock_irqsave(&mxc_dvfs_core_lock, flags);
 
 		reg = __raw_readl(dvfs_data->membase
@@ -644,7 +725,7 @@ void stop_dvfs(void)
 		dvfs_core_is_active = 0;
 
 		clk_disable(dvfs_clk);
-	}
+		}
 
 	printk(KERN_DEBUG "DVFS is stopped\n");
 }
@@ -919,7 +1000,9 @@ static int __devinit mxc_dvfs_core_probe(struct platform_device *pdev)
 	old_wp = 0;
 	curr_wp = 0;
 	dvfs_core_resume = 0;
+#ifndef CONFIG_CPU_FREQ
 	cpufreq_trig_needed = 0;
+#endif
 
 	return err;
 err3:

@@ -16,16 +16,27 @@
 #include <linux/gpio.h>
 #include <linux/delay.h>
 
-#include <mach/hardware.h>
-#include <mach/gpio.h>
-#include <mach/iomux-mx50.h>
-
 #include <linux/interrupt.h>
 #include <linux/irq.h>
 #include <linux/workqueue.h>
 #include <linux/completion.h>
 #include <linux/wait.h>
 #include <linux/semaphore.h>
+
+
+#ifdef CONFIG_MACH_MX6SL_NTX//[
+	#define TPS65185_PLATFORM_MX6		1
+#endif//]CONFIG_MACH_MX6SL_NTX
+
+
+#include <mach/hardware.h>
+#include <mach/gpio.h>
+
+#ifdef TPS65185_PLATFORM_MX6//[
+	#include <mach/iomux-mx6sl.h>
+#else //][!TPS65185_PLATFORM_MX6
+	#include <mach/iomux-mx50.h>
+#endif //] TPS65185_PLATFORM_MX6
 
 #include "ntx_hwconfig.h"
 
@@ -48,20 +59,66 @@
 #define TPS65185_PWR_ONOFF_INT	1
 //#define TPS65185_PWR_ONOFF_WAITBYCOMPLETE		1
 
+#define TPS65185_PWROFFDELAYWORK_TICKS		50
+
+
+#ifdef TPS65185_PLATFORM_MX6//[
+
+	#define GPIO_TPS65185_PWRUP			IMX_GPIO_NR(2,8) // EPDC_PWRCTRL1
+	#define GPIO_TPS65185_PWRUP_PADCFG		MX6SL_PAD_EPDC_PWRCTRL1__GPIO_2_8	
+
+	#define GPIO_TPS65185_WAKEUP		IMX_GPIO_NR(2,7) // EPDC_PWRCTRL0
+	#define GPIO_TPS65185_WAKEUP_PADCFG		MX6SL_PAD_EPDC_PWRCTRL0__GPIO_2_7	
+
+	#define GPIO_TPS65185_VCOMCTRL	IMX_GPIO_NR(2,3) // EPDC_VCOM0
+	#define GPIO_TPS65185_VCOMCTRL_PADCFG		MX6SL_PAD_EPDC_VCOM0__GPIO_2_3	
+
+	#define GPIO_TPS65185_VIN				IMX_GPIO_NR(2,14) // EPDC_PWRWAKEUP
+	#define GPIO_TPS65185_VIN_PADCFG				MX6SL_PAD_EPDC_PWRWAKEUP__GPIO_2_14	
+
+		//  GPIO input
+	#define GPIO_TPS65185_PWRGOOD							IMX_GPIO_NR(2,13) // EPDC_PWRSTAT
+	#define GPIO_TPS65185_PWRGOOD_INT_PADCFG			MX6SL_PAD_EPDC_PWRSTAT__GPIO_2_13_PUINT
+	#define GPIO_TPS65185_PWRGOOD_GPIO_PADCFG			MX6SL_PAD_EPDC_PWRSTAT__GPIO_2_13
+
+	#define GPIO_TPS65185_INT						IMX_GPIO_NR(2,9) // EPDC_PWRCTRL2
+	#define GPIO_TPS65185_INT_PADCFG		 MX6SL_PAD_EPDC_PWRCTRL2__GPIO_2_9_PUINT
+	#define GPIO_TPS65185_INT_GPIO_PADCFG		 MX6SL_PAD_EPDC_PWRCTRL2__GPIO_2_9
+
+	//#define GPIO_TPS65185_SDA	
+	//#define GPIO_TPS65185_SDL	
+	#define set_irq_type(_irq,_irqtype)		irq_set_irq_type((_irq),(_irqtype))
+
+#else //][!TPS65185_PLATFORM_MX6
+
 //////////////////////////////////////////////////////////////
 // definitions gpio ...
 //  GPIO output
-#define GPIO_TPS65185_PWRUP		(2*32 + 30) /* GPIO_3_30 */
-#define GPIO_TPS65185_WAKEUP	(2*32 + 29) /* GPIO_3_29 */
-#define GPIO_TPS65185_VCOMCTRL	(3*32 + 21)	/* GPIO_4_21 */
-#define GPIO_TPS65185_VIN		(0*32 + 27)	/* GPIO_1_27 */
-//  GPIO input
-#define GPIO_TPS65185_PWRGOOD	(2*32 + 28)	/* GPIO_3_28 */
-#define GPIO_TPS65185_INT		(3*32 + 15)	/* GPIO_4_15 */
+	#define GPIO_TPS65185_PWRUP		(2*32 + 30) /* GPIO_3_30 */
+	#define GPIO_TPS65185_PWRUP_PADCFG			MX50_PAD_EPDC_PWRCTRL1__GPIO_3_30
 
-#define GPIO_TPS65185_SDA	(5*32+21) /* GPIO_6_21 */
-#define GPIO_TPS65185_SDL	(5*32+20) /* GPIO_6_20 */
+	#define GPIO_TPS65185_WAKEUP	(2*32 + 29) /* GPIO_3_29 */
+	#define GPIO_TPS65185_WAKEUP_PADCFG			MX50_PAD_EPDC_PWRCTRL0__GPIO_3_29
 
+	#define GPIO_TPS65185_VCOMCTRL	(3*32 + 21)	/* GPIO_4_21 */
+	#define GPIO_TPS65185_VCOMCTRL_PADCFG		MX50_PAD_EPDC_VCOM0__GPIO_4_21
+
+	#define GPIO_TPS65185_VIN		(0*32 + 27)	/* GPIO_1_27 */
+	#define GPIO_TPS65185_VIN_PADCFG				MX50_PAD_EIM_CRE__GPIO_1_27
+
+	//  GPIO input
+	#define GPIO_TPS65185_PWRGOOD	(2*32 + 28)	/* GPIO_3_28 */
+	#define GPIO_TPS65185_PWRGOOD_INT_PADCFG			MX50_PAD_EPDC_PWRSTAT__GPIO_3_28_INT
+	#define GPIO_TPS65185_PWRGOOD_GPIO_PADCFG			MX50_PAD_EPDC_PWRSTAT__GPIO_3_28
+
+	#define GPIO_TPS65185_INT		(3*32 + 15)	/* GPIO_4_15 */
+	#define GPIO_TPS65185_INT_PADCFG		 MX50_PAD_ECSPI1_SS0__GPIO_4_15_PUINT
+	#define GPIO_TPS65185_INT_GPIO_PADCFG		 MX50_PAD_ECSPI1_SS0__GPIO_4_15
+
+	//#define GPIO_TPS65185_SDA	(5*32+21) /* GPIO_6_21 */
+	//#define GPIO_TPS65185_SDL	(5*32+20) /* GPIO_6_20 */
+	//
+#endif //] TPS65185_PLATFORM_MX6
 ///////////////////////////////////////////////////////
 // definitions for config_epd_timing() ...
 
@@ -80,12 +137,18 @@ typedef struct tagTPS65185_data {
 	int iCurrentPwrupState;
 	int iCurrentWakeupState;
 	int iIsInitPwrON;// is first power on or not , if yes ,you must to delay 1.8ms for i2c protocol initial .
-	unsigned char bRegENABLE;
+	//unsigned char bRegENABLE;
 	//int iLast_temprature;
 	struct semaphore i2clock;
 	struct semaphore chmod_lock;
 } TPS65185_data;
 
+
+typedef struct tagTPS65185_PWRDWN_WORK_PARAM {
+	struct delayed_work pwrdwn_work;
+	unsigned long dwNewMode;
+	int iIsWaitPwrOff;
+} TPS65185_PWRDWN_WORK_PARAM;
 
 #define LKDRIVER_DATA_INIT(_iChipIdx)	\
 {\
@@ -95,13 +158,23 @@ typedef struct tagTPS65185_data {
 	gtTPS65185_DataA[_iChipIdx].iCurrentPwrupState=-1;\
 	gtTPS65185_DataA[_iChipIdx].iCurrentWakeupState=-1;\
 	gtTPS65185_DataA[_iChipIdx].iIsInitPwrON=1;\
-	init_MUTEX(&gtTPS65185_DataA[_iChipIdx].i2clock);\
-	init_MUTEX(&gtTPS65185_DataA[_iChipIdx].chmod_lock);\
+	sema_init(&gtTPS65185_DataA[_iChipIdx].i2clock,1);\
+	sema_init(&gtTPS65185_DataA[_iChipIdx].chmod_lock,1);\
 }
+
+// externals ...
+extern volatile NTX_HWCONFIG *gptHWCFG;
+extern volatile int gSleep_Mode_Suspend;
+
+
+// 
+static TPS65185_PWRDWN_WORK_PARAM gtPwrdwn_work_param;
 
 static struct i2c_adapter *gpI2C_adapter = 0;
 static struct i2c_client *gpI2C_clientA[TOTAL_CHIPS] = {0,};
 volatile static int giIsTPS65185_inited=0;
+volatile static int giIsTPS65185_gpio_inited=0;
+volatile static int giIsTPS65185_turnoff_EP3V3=0;
 
 static struct i2c_board_info gtTPS65185_BIA[TOTAL_CHIPS] = {
 	{
@@ -109,6 +182,12 @@ static struct i2c_board_info gtTPS65185_BIA[TOTAL_CHIPS] = {
 	 .addr = 0x68,
 	 .platform_data = NULL,
 	 },
+};
+
+
+static const unsigned short gwTPS65185_AddrA[] = {
+	0x68,
+	I2C_CLIENT_END
 };
 
 
@@ -541,6 +620,54 @@ static irqreturn_t tps65185_pwrgood_inthandler(int irq, void *dev_id)
 	return 0;
 }
 
+static void _tps65185_pwrdwn(void)
+{
+	unsigned long dwCurrentMode,dwNewMode;
+	int iIsWaitPwrOff;
+
+	// parameters setup ...
+	dwCurrentMode = gtTPS65185_DataA[0].dwCurrent_mode;
+	dwNewMode = gtPwrdwn_work_param.dwNewMode ;
+	iIsWaitPwrOff = gtPwrdwn_work_param.iIsWaitPwrOff;
+
+	DBG_MSG("%s : mode=%ld begin\n",__FUNCTION__,dwNewMode);
+
+	ASSERT(giIsTPS65185_inited);
+
+	if(dwCurrentMode==dwNewMode) {
+		DBG_MSG("%s : skip same mode\n",__FUNCTION__);
+		goto exit ;
+	}
+
+	gpio_direction_output(GPIO_TPS65185_PWRUP, 0);
+	if( TPS65185_MODE_ACTIVE==dwCurrentMode && iIsWaitPwrOff ) {
+		tps65185_wait_panel_poweroff();
+
+		if(giIsTPS65185_turnoff_EP3V3) {
+			// Turn off EV_3V3 ...
+			udelay(100);TPS65185_REG_SET(ENABLE,V3P3_EN,0);
+		}
+		
+	}
+
+	if( dwNewMode == TPS65185_MODE_SLEEP) {
+		gpio_direction_output(GPIO_TPS65185_WAKEUP, 0);
+	}
+
+	gtTPS65185_DataA[0].dwCurrent_mode = dwNewMode;
+
+exit:
+	DBG_MSG("%s : mode=%ld end .\n",__FUNCTION__,dwNewMode);
+}
+
+static void tps65185_pwrdwn_work_func(struct work_struct *work)
+{
+	down(&gtTPS65185_DataA[0].chmod_lock);
+	_tps65185_pwrdwn();
+	up(&gtTPS65185_DataA[0].chmod_lock);
+}
+
+
 
 //
 static int tps65185_gpio_init(void)
@@ -549,16 +676,19 @@ static int tps65185_gpio_init(void)
 	int iChk;
 	int irq;
 
+	if(giIsTPS65185_gpio_inited) {
+		return TPS65185_RET_SUCCESS;
+	}
+
 	// inputs
-	//mxc_iomux_v3_setup_pad(MX50_PAD_EPDC_PWRSTAT__GPIO_3_28);
-	mxc_iomux_v3_setup_pad(MX50_PAD_EPDC_PWRSTAT__GPIO_3_28_INT);
+	mxc_iomux_v3_setup_pad(GPIO_TPS65185_PWRGOOD_INT_PADCFG);
 	gpio_request(GPIO_TPS65185_PWRGOOD, "tps65185_PWRGOOD");
 	gpio_direction_input(GPIO_TPS65185_PWRGOOD);
 	//giIsTPS65185_PwrOn=gpio_get_value(GPIO_TPS65185_PWRGOOD);
 
 #ifdef TPS65185_PWR_ONOFF_INT//[
 
-	tps65185_pwrgood_workqueue=create_rt_workqueue("tps65185_PWRGOOD");
+	tps65185_pwrgood_workqueue=create_singlethread_workqueue("tps65185_PWRGOOD");
 	INIT_WORK(&tps65185_pwrgood_work, tps65185_pwrgood_func);
 
 	irq = gpio_to_irq(GPIO_TPS65185_PWRGOOD);
@@ -567,11 +697,11 @@ static int tps65185_gpio_init(void)
 
 
 	
-	mxc_iomux_v3_setup_pad(MX50_PAD_ECSPI1_SS0__GPIO_4_15_PUINT);
+	mxc_iomux_v3_setup_pad(GPIO_TPS65185_INT_PADCFG);
 	gpio_request(GPIO_TPS65185_INT, "tps65185_INT");
 	gpio_direction_input (GPIO_TPS65185_INT);
 	
-	tps65185_int_workqueue=create_rt_workqueue("tps65185_INT");
+	tps65185_int_workqueue=create_singlethread_workqueue("tps65185_INT");
 	INIT_WORK(&tps65185_int_work, tps65185_int_func);
 
 	irq = gpio_to_irq(GPIO_TPS65185_INT);
@@ -579,23 +709,26 @@ static int tps65185_gpio_init(void)
 
 
 	// outputs
-	mxc_iomux_v3_setup_pad(MX50_PAD_EIM_CRE__GPIO_1_27);
+	mxc_iomux_v3_setup_pad(GPIO_TPS65185_VIN_PADCFG);
 	gpio_request(GPIO_TPS65185_VIN, "tps65185_VIN");
 	gpio_direction_output(GPIO_TPS65185_VIN, 1);
 	mdelay(5);
 
-	mxc_iomux_v3_setup_pad(MX50_PAD_EPDC_PWRCTRL1__GPIO_3_30);
+	mxc_iomux_v3_setup_pad(GPIO_TPS65185_PWRUP_PADCFG);
 	gpio_request(GPIO_TPS65185_PWRUP, "tps65185_PWRUP");
 	gpio_direction_output(GPIO_TPS65185_PWRUP, 0);
 
-	mxc_iomux_v3_setup_pad(MX50_PAD_EPDC_PWRCTRL0__GPIO_3_29);
+	mxc_iomux_v3_setup_pad(GPIO_TPS65185_WAKEUP_PADCFG);
 	gpio_request(GPIO_TPS65185_WAKEUP, "tps65185_WAKEUP");
-	gpio_direction_output(GPIO_TPS65185_WAKEUP, 0);
+	gpio_direction_output(GPIO_TPS65185_WAKEUP, 1);
+	mdelay(2);
+	gtTPS65185_DataA[0].dwCurrent_mode=TPS65185_MODE_STANDBY;
 
-	mxc_iomux_v3_setup_pad(MX50_PAD_EPDC_VCOM0__GPIO_4_21);
+	mxc_iomux_v3_setup_pad(GPIO_TPS65185_VCOMCTRL_PADCFG);
 	gpio_request(GPIO_TPS65185_VCOMCTRL, "tps65185_VCOMCTRL");
 	gpio_direction_output(GPIO_TPS65185_VCOMCTRL, 0);
 
+	giIsTPS65185_gpio_inited=1;
 
 	return iRet;
 }
@@ -609,8 +742,8 @@ static int tps65185_gpio_release(void)
 
 	// release gpios ...
 	
-	// release interrupt ...
-	
+
+#if 0
 #ifdef TPS65185_PWR_ONOFF_INT//[
 
 	irq = gpio_to_irq(GPIO_TPS65185_PWRGOOD);
@@ -624,6 +757,17 @@ static int tps65185_gpio_release(void)
 	free_irq(irq,0);
 	flush_workqueue(tps65185_int_workqueue);
 	destroy_workqueue(tps65185_int_workqueue);
+
+	if(giIsTPS65185_gpio_inited) {
+		gpio_free(GPIO_TPS65185_PWRGOOD);
+		gpio_free(GPIO_TPS65185_INT);
+		gpio_free(GPIO_TPS65185_VIN);
+		gpio_free(GPIO_TPS65185_PWRUP);
+		gpio_free(GPIO_TPS65185_WAKEUP);
+		gpio_free(GPIO_TPS65185_VCOMCTRL);
+	}
+#endif
+
 	return iRet;
 }
 
@@ -777,19 +921,41 @@ int tps65185_init(int iPort,int iEPDTimingType)
 	}
 	
 	for(iChipIdx=0;iChipIdx<TOTAL_CHIPS;iChipIdx++) {
+		LKDRIVER_DATA_INIT(iChipIdx);
+
+#if 0 //[
 		gpI2C_clientA[iChipIdx] = i2c_new_device(gpI2C_adapter, &gtTPS65185_BIA[iChipIdx]);
+#else //][!
+
+#ifdef TPS65185_PLATFORM_MX6//[
+		gpI2C_clientA[iChipIdx] = \
+			i2c_new_probed_device(gpI2C_adapter, &gtTPS65185_BIA[iChipIdx],gwTPS65185_AddrA,0);
+#else //][!TPS65185_PLATFORM_MX6
+		gpI2C_clientA[iChipIdx] = \
+			i2c_new_probed_device(gpI2C_adapter, &gtTPS65185_BIA[iChipIdx],gwTPS65185_AddrA);
+#endif //]TPS65185_PLATFORM_MX6
+
+#endif//]
+
 		if(NULL == gpI2C_clientA[iChipIdx]) {
 			tps65185_release();
 			GALLEN_DBGLOCAL_ESC();
 			ERR_MSG("[Error] %s : TPS65185_RET_NEWDEVFAIL\n",__FUNCTION__);
 			return TPS65185_RET_NEWDEVFAIL;
 		}
-		printk("client%d ,addr=0x%x,name=%s\n",iChipIdx,
+		printk("client%d@i2c%d ,addr=0x%x,name=%s\n",iChipIdx,iPort,
 			gpI2C_clientA[iChipIdx]->addr,gpI2C_clientA[iChipIdx]->name);
 
-		LKDRIVER_DATA_INIT(iChipIdx);
 	}
 	
+
+	INIT_DELAYED_WORK(&gtPwrdwn_work_param.pwrdwn_work,tps65185_pwrdwn_work_func);
+
+	if(34==gptHWCFG->m_val.bPCB||35==gptHWCFG->m_val.bPCB||33==gptHWCFG->m_val.bPCB) {
+		// E606FXA/E606FXB/E60Q2X ...
+		giIsTPS65185_turnoff_EP3V3=1;
+		printk("%s(%d): EP_3V3 ON/OFF control enabled !\n",__FILE__,__LINE__);
+	}
 	giIsTPS65185_inited=1;
 
 	// change TPS65185 to standby mode .
@@ -813,12 +979,20 @@ int tps65185_init(int iPort,int iEPDTimingType)
 #endif
 
 
-	tps65185_get_versions(&gtTPS65185_DataA[0].t65185_versions);
+	iChk = tps65185_get_versions(&gtTPS65185_DataA[0].t65185_versions);
 	printk("TPS65185 versions : major=0x%x,minor=0x%x,version=0x%x,RevID=0x%x\n",
 			gtTPS65185_DataA[0].t65185_versions.bMajor,
 			gtTPS65185_DataA[0].t65185_versions.bMinor,
 			gtTPS65185_DataA[0].t65185_versions.bVersion,
 			gtTPS65185_DataA[0].t65185_versions.bRevID);
+
+	if(iChk<0) {
+		ERR_MSG("[Error] %s : get TPS65185 version fail !\n",__FUNCTION__);
+		tps65185_release();
+		GALLEN_DBGLOCAL_ESC();
+		return iChk;
+	}
+
 
 	//tps65185_get_temperature(0,0);// test .
 	
@@ -896,21 +1070,24 @@ int tps65185_release(void)
 		gtTPS65185_DataA[iChipIdx].iCurrent_temprature = -1;
 		//gtTPS65185_DataA[iChipIdx].iLast_temprature = -1;
 	}
+
+	if(giIsTPS65185_inited) {
+		dw65185mode = TPS65185_MODE_SLEEP;
+		iChk = tps65185_chg_mode(&dw65185mode,1);
+		if(iChk<0) {
+			ERR_MSG("[Error] %s : change to power down mode fail !\n",__FUNCTION__);
+			tps65185_release();
+			GALLEN_DBGLOCAL_ESC();
+			return iChk;
+		}
+	// release interrupt ...
 	
-	dw65185mode = TPS65185_MODE_SLEEP;
-	iChk = tps65185_chg_mode(&dw65185mode,1);
-	if(iChk<0) {
-		ERR_MSG("[Error] %s : change to power down mode fail !\n",__FUNCTION__);
-		tps65185_release();
-		GALLEN_DBGLOCAL_ESC();
-		return iChk;
+		iChk = tps65185_gpio_release();
+		if(iChk<0) {
+			WARNING_MSG("[Warnig] %s : gpio release fail !\n",__FUNCTION__);
+		}
 	}
 
-
-	iChk = tps65185_gpio_release();
-	if(iChk<0) {
-		WARNING_MSG("[Warnig] %s : gpio release fail !\n",__FUNCTION__);
-	}
 
 	gpI2C_adapter = NULL;
 	
@@ -936,8 +1113,20 @@ int tps65185_get_temperature(int *O_piTemperature)
 
 	unsigned long ulTimeoutTick;
 	unsigned long ulCurTick;
+	unsigned long dw65185mode;
 
 	GALLEN_DBGLOCAL_BEGIN();
+
+	if(TPS65185_MODE_STANDBY!=gtTPS65185_DataA[0].dwCurrent_mode&&TPS65185_MODE_ACTIVE!=gtTPS65185_DataA[0].dwCurrent_mode)
+	{
+		dw65185mode = TPS65185_MODE_STANDBY;
+		iChk = tps65185_chg_mode(&dw65185mode,1);
+		if(iChk<0) {
+			ERR_MSG("[Error] %s : change to standby mode fail !\n",__FUNCTION__);
+			GALLEN_DBGLOCAL_ESC();
+			return iChk;
+		}
+	}
 
 	//printk("%s()\n",__FUNCTION__);
 	iChk = TPS65185_REG_SET(TMST1,READ_THERM,1);
@@ -1132,7 +1321,7 @@ int tps65185_wait_panel_poweroff(void)
 			#endif //] TPS65185_PWR_ONOFF_WAITBYCOMPLETE
 			if(tps65185_is_panel_poweron()) {
 				iRet = TPS65185_RET_TIMEOUT;
-				ERR_MSG("%s(%d):wait power on timeout lpcnt=%d!\n",__FILE__,__LINE__,ilpcnt);
+				ERR_MSG("%s(%d):wait power off timeout lpcnt=%d!\n",__FILE__,__LINE__,ilpcnt);
 			}
 			else {
 				iRet = TPS65185_RET_SUCCESS;
@@ -1174,12 +1363,15 @@ int tps65185_wait_panel_poweroff(void)
 int tps65185_chg_mode(unsigned long *IO_pdwMode,int iIsWaitPwrOff)
 {
 	int iRet=TPS65185_RET_SUCCESS;
-	unsigned long dwCurrent_mode = gtTPS65185_DataA[0].dwCurrent_mode;
+	int iChk;
+	unsigned long dwCurrent_mode;
 	unsigned long dwNewMode;
+	int iRetryCnt;
 	//int irq_INT,irq_PG;
 
+	GALLEN_DBGLOCAL_BEGIN();
 
-	int iCurrentWakeupState,iCurrentPwrupState,iNewWakeupState,iNewPwrupState;
+	//int iNewWakeupState,iNewPwrupState;
 
 	//irq_INT = gpio_to_irq(GPIO_TPS65185_INT);
 	//irq_PG = gpio_to_irq(GPIO_TPS65185_PWRGOOD);
@@ -1189,7 +1381,8 @@ int tps65185_chg_mode(unsigned long *IO_pdwMode,int iIsWaitPwrOff)
 
 	down(&gtTPS65185_DataA[0].chmod_lock);
 
-	GALLEN_DBGLOCAL_BEGIN();
+	dwCurrent_mode = gtTPS65185_DataA[0].dwCurrent_mode;
+	dwNewMode = *IO_pdwMode;
 
 	if(0==giIsTPS65185_inited) {
 		ERR_MSG("[Error] %s : tps65185 must be initialized first !\n",__FUNCTION__);
@@ -1205,8 +1398,7 @@ int tps65185_chg_mode(unsigned long *IO_pdwMode,int iIsWaitPwrOff)
 		goto exit;
 	}
 
-	dwNewMode = *IO_pdwMode;
-	if(dwCurrent_mode == dwNewMode) {
+	if(dwNewMode!=TPS65185_MODE_ACTIVE && dwCurrent_mode == dwNewMode) {
 		DBG_MSG("%s : skip same mode \n",__FUNCTION__);
 		GALLEN_DBGLOCAL_ESC();
 		iRet = TPS65185_RET_SUCCESS;
@@ -1216,12 +1408,11 @@ int tps65185_chg_mode(unsigned long *IO_pdwMode,int iIsWaitPwrOff)
 
 	// change tps65185 work mode ...
 	//gpio_direction_input(GPIO_TPS65185_WAKEUP);
-	iCurrentWakeupState = gpio_get_value(GPIO_TPS65185_WAKEUP);
+	//iCurrentWakeupState = gpio_get_value(GPIO_TPS65185_WAKEUP);
 	//gpio_direction_input(GPIO_TPS65185_PWRUP);
-	iCurrentPwrupState = gpio_get_value(GPIO_TPS65185_PWRUP);
+	//iCurrentPwrupState = gpio_get_value(GPIO_TPS65185_PWRUP);
 
-	DBG_MSG("%s begin %ld->%ld\n",
-			__FUNCTION__,dwCurrent_mode,dwNewMode);
+	DBG_MSG("%s begin %ld->%ld\n",__FUNCTION__,dwCurrent_mode,dwNewMode);
 
 	switch(dwNewMode) {
 	case TPS65185_MODE_ACTIVE:GALLEN_DBGLOCAL_RUNLOG(0);
@@ -1234,8 +1425,10 @@ int tps65185_chg_mode(unsigned long *IO_pdwMode,int iIsWaitPwrOff)
 		}	
 		#endif
 
-		iNewWakeupState = 1;
-		iNewPwrupState = 1;
+		iChk = cancel_delayed_work_sync(&gtPwrdwn_work_param.pwrdwn_work);
+
+		//iNewWakeupState = 1;
+		//iNewPwrupState = 1;
 		
 		if(TPS65185_MODE_SLEEP==dwCurrent_mode || TPS65185_MODE_UNKOWN==dwCurrent_mode) {
 			GALLEN_DBGLOCAL_RUNLOG(3);
@@ -1244,64 +1437,98 @@ int tps65185_chg_mode(unsigned long *IO_pdwMode,int iIsWaitPwrOff)
 				GALLEN_DBGLOCAL_RUNLOG(2);
 				gtTPS65185_DataA[0].iIsInitPwrON = 0;
 			}
-			udelay(1900);
-			tps65185_reg_init(1);
 
-			#ifdef TPS65185_EP3V3_PWROFF//[
+			iRetryCnt = 0;
+			do {
+				mdelay(2);
+				if(giIsTPS65185_turnoff_EP3V3) {
+					iRet = tps65185_reg_init(0);
+				}
+				else {
+					iRet = tps65185_reg_init(1);
+				}
+				if(iRet>=0) {
+					TPS65185_REG_SET(ENABLE,V3P3_EN,1);
+					udelay(100);
+					gpio_direction_output(GPIO_TPS65185_PWRUP, 1);
+					break;
+				}
+				WARNING_MSG("PMIC sleep->active, retry %d\n",iRetryCnt);
+			} while(++iRetryCnt<10);
 
-			udelay(100);
-			#endif //]TPS65185_EP3V3_PWROFF
 
-			gpio_direction_output(GPIO_TPS65185_PWRUP, 1);
 		}
 		else if(TPS65185_MODE_STANDBY==dwCurrent_mode) {
 			//gpio_direction_output(GPIO_TPS65185_WAKEUP, 1);
 			//gpio_direction_output(GPIO_TPS65185_PWRUP, 0);
 			//ERR_MSG(".");
 			//udelay(1900);
-			#ifdef TPS65185_EP3V3_PWROFF//[
-
-			TPS65185_REG_SET(ENABLE,V3P3_EN,1);udelay(100);
-			#endif //]TPS65185_EP3V3_PWROFF
+			if(giIsTPS65185_turnoff_EP3V3) {
+				TPS65185_REG_SET(ENABLE,V3P3_EN,1);udelay(100);
+			}
 
 			gpio_direction_output(GPIO_TPS65185_PWRUP, 1);
 			//ERR_MSG(".");
 		}
+		else if(TPS65185_MODE_ACTIVE==dwCurrent_mode) {
+		}
 		else 
 		{
 			GALLEN_DBGLOCAL_RUNLOG(4);
-			ERR_MSG("wrong mode !!? (mode=%ld,wakeup=%ld,pwrup=%ld)\n",
-					dwCurrent_mode,iCurrentWakeupState,iCurrentPwrupState);
+			ERR_MSG("wrong mode !!? (mode=%ld)\n",dwCurrent_mode);
 			iRet = TPS65185_REG_SET(ENABLE,ACTIVE,1);
 		}
-		//ERR_MSG(".");
-		tps65185_wait_panel_poweron();
 
-		gpio_direction_output(GPIO_TPS65185_VCOMCTRL, 1);
-		msleep(10);
-		//ERR_MSG(".\n");
+		if(iRet>=0) {
+			//ERR_MSG(".");
+			tps65185_wait_panel_poweron();
+
+			gpio_direction_output(GPIO_TPS65185_VCOMCTRL, 1);
+			msleep(10);
+			//udelay(300);
+			//ERR_MSG(".\n");
+			gtTPS65185_DataA[0].dwCurrent_mode = dwNewMode;
+		}
+
 		break;
 
 	case TPS65185_MODE_SLEEP:GALLEN_DBGLOCAL_RUNLOG(5);
-		iNewWakeupState = 0;
-		iNewPwrupState = 0;
-		gpio_direction_output(GPIO_TPS65185_WAKEUP, iNewWakeupState);
-		gpio_direction_output(GPIO_TPS65185_PWRUP, iNewPwrupState);
-		gpio_direction_output(GPIO_TPS65185_VCOMCTRL, 0);
-		if( TPS65185_MODE_ACTIVE==dwCurrent_mode && iIsWaitPwrOff ) {
-			tps65185_wait_panel_poweroff();
+		//iNewWakeupState = 0;
+		//iNewPwrupState = 0;
 
-			#ifdef TPS65185_EP3V3_PWROFF//[
+		if(TPS65185_MODE_ACTIVE==dwCurrent_mode) 
+		{
+			udelay(100);gpio_direction_output(GPIO_TPS65185_VCOMCTRL, 0);
 
-			udelay(100);TPS65185_REG_SET(ENABLE,V3P3_EN,0);
-			#endif //]TPS65185_EP3V3_PWROFF
+#ifdef TPS65185_PWROFFDELAYWORK_TICKS//[
+
+			if(!delayed_work_pending(&gtPwrdwn_work_param.pwrdwn_work)) {
+				GALLEN_DBGLOCAL_RUNLOG(13);
+				iChk = cancel_delayed_work_sync(&gtPwrdwn_work_param.pwrdwn_work);
+				gtPwrdwn_work_param.dwNewMode = dwNewMode;
+				gtPwrdwn_work_param.iIsWaitPwrOff = iIsWaitPwrOff;
+
+				schedule_delayed_work(&gtPwrdwn_work_param.pwrdwn_work, TPS65185_PWROFFDELAYWORK_TICKS);
+			}
+#else//][! TPS65185_PWROFFDELAYWORK_TICKS
+			GALLEN_DBGLOCAL_RUNLOG(14);
+			_tps65185_pwrdwn();
+#endif //] TPS65185_PWROFFDELAYWORK_TICKS
 			
 		}
+		else 
+		{
+			GALLEN_DBGLOCAL_RUNLOG(15);
+			gpio_direction_output(GPIO_TPS65185_PWRUP, 0);
+			gpio_direction_output(GPIO_TPS65185_WAKEUP, 0);
+			gtTPS65185_DataA[0].dwCurrent_mode = dwNewMode;
+		}
+
 		break;
 
 	case TPS65185_MODE_STANDBY:GALLEN_DBGLOCAL_RUNLOG(6);
-		iNewWakeupState = 1;
-		iNewPwrupState = 0;
+		//iNewWakeupState = 1;
+		//iNewPwrupState = 0;
 
 		if(TPS65185_MODE_SLEEP==dwCurrent_mode || TPS65185_MODE_UNKOWN==dwCurrent_mode) 
 		{
@@ -1313,36 +1540,50 @@ int tps65185_chg_mode(unsigned long *IO_pdwMode,int iIsWaitPwrOff)
 				gtTPS65185_DataA[0].iIsInitPwrON = 0;
 			}
 			//gpio_direction_output(GPIO_TPS65185_PWRUP, 0);
-			udelay(1900);
-			//mdelay(1);// to avoid system hands up ,while suspend to resume .
-			
-			#ifdef TPS65185_EP3V3_PWROFF//[
-			
-			tps65185_reg_init(0);
-			#else //][! TPS65185_EP3V3_PWROFF
-			tps65185_reg_init(1);
-			#endif //]  TPS65185_EP3V3_PWROFF
+			iRetryCnt = 0;
+			do {
+				mdelay(2);
+				if(giIsTPS65185_turnoff_EP3V3) {
+					iRet = tps65185_reg_init(0);
+				}
+				else {
+					iRet = tps65185_reg_init(1);
+				}
+				if(iRet>=0) {
+					gtTPS65185_DataA[0].dwCurrent_mode = dwNewMode;
+					//TPS65185_REG_SET(ENABLE,V3P3_EN,1);
+					udelay(100);
+					break;
+				}
+				WARNING_MSG("PMIC sleep->standby, retry %d\n",iRetryCnt);
+			} while(++iRetryCnt<10);
+
+
 		}
 		else if(TPS65185_MODE_ACTIVE==dwCurrent_mode) {
-			//gpio_direction_output(GPIO_TPS65185_WAKEUP, 1);
-			//gpio_direction_output(GPIO_TPS65185_PWRUP, 1);
-			gpio_direction_output(GPIO_TPS65185_PWRUP, 0);
-			gpio_direction_output(GPIO_TPS65185_VCOMCTRL, 0);
-			if(iIsWaitPwrOff) {
-				tps65185_wait_panel_poweroff();
+			udelay(100);gpio_direction_output(GPIO_TPS65185_VCOMCTRL, 0);
+
+#ifdef TPS65185_PWROFFDELAYWORK_TICKS//[
+
+			if(!delayed_work_pending(&gtPwrdwn_work_param.pwrdwn_work)) {
+				GALLEN_DBGLOCAL_RUNLOG(16);
+				iChk = cancel_delayed_work_sync(&gtPwrdwn_work_param.pwrdwn_work);
+				gtPwrdwn_work_param.dwNewMode = dwNewMode;
+				gtPwrdwn_work_param.iIsWaitPwrOff = iIsWaitPwrOff;
+
+				schedule_delayed_work(&gtPwrdwn_work_param.pwrdwn_work, TPS65185_PWROFFDELAYWORK_TICKS);
 			}
-
-			#ifdef TPS65185_EP3V3_PWROFF//[
-
-			udelay(100);TPS65185_REG_SET(ENABLE,V3P3_EN,0);
-			#endif //]TPS65185_EP3V3_PWROFF
+#else//][! TPS65185_PWROFFDELAYWORK_TICKS
+			GALLEN_DBGLOCAL_RUNLOG(17);
+			_tps65185_pwrdwn();
+#endif //] TPS65185_PWROFFDELAYWORK_TICKS
 			
 		}
 		else {
 			GALLEN_DBGLOCAL_RUNLOG(10);
-			ERR_MSG("wrong mode !!? (mode=%ld,wakeup=%ld,pwrup=%ld)\n",
-					dwCurrent_mode,iCurrentWakeupState,iCurrentPwrupState);
+			ERR_MSG("wrong mode !!? (mode=%ld)\n",dwCurrent_mode);
 			iRet = TPS65185_REG_SET(ENABLE,STANDBY,1);
+			gtTPS65185_DataA[0].dwCurrent_mode = dwNewMode;
 		}
 
 		break;
@@ -1356,22 +1597,17 @@ int tps65185_chg_mode(unsigned long *IO_pdwMode,int iIsWaitPwrOff)
 		goto exit;
 	}
 
-	DBG_MSG("%s :[mode] 0x%x->0x%x [wakeup] %d->%d, [pwrup] %d->%d \n",__FUNCTION__,\
-			(unsigned int)dwCurrent_mode,(unsigned int)dwNewMode,\
-			iCurrentWakeupState,iNewWakeupState,\
-			iCurrentPwrupState,iNewPwrupState);
+	DBG_MSG("%s :[mode] 0x%x->0x%x \n",__FUNCTION__,\
+			(unsigned int)dwCurrent_mode,(unsigned int)dwNewMode);
 
-	gtTPS65185_DataA[0].dwCurrent_mode = dwNewMode;
-	gtTPS65185_DataA[0].iCurrentPwrupState = iCurrentPwrupState;
-	gtTPS65185_DataA[0].iCurrentWakeupState = iCurrentWakeupState;
+	//gtTPS65185_DataA[0].iCurrentPwrupState = iCurrentPwrupState;
+	//gtTPS65185_DataA[0].iCurrentWakeupState = iCurrentWakeupState;
 
 	*IO_pdwMode = dwCurrent_mode;
 
 exit:
 
-	DBG_MSG("%s end,mode %lu->%lu,(%d,%d)->(%d,%d) \n",__FUNCTION__,\
-			dwCurrent_mode,dwNewMode,iCurrentWakeupState,iCurrentPwrupState,\
-			iNewWakeupState,iNewPwrupState);
+	DBG_MSG("%s end,mode %lu->%lu \n",__FUNCTION__,dwCurrent_mode,dwNewMode);
 
 	GALLEN_DBGLOCAL_END();
 
@@ -1410,9 +1646,13 @@ int tps65185_vcom_set(int I_iVCOM_mv,int iIsWriteToFlash)
 		wVCOM_val = (unsigned short)((-I_iVCOM_mv)/10);
 	}
 	
+	//printk(KERN_ERR"====>[wVCOM_val]:%x\n",wVCOM_val);
 	if(wVCOM_val&0x100) {
 		GALLEN_DBGLOCAL_RUNLOG(2);
 		TPS65185_REG_SET(VCOM2,VCOM8,1);
+	}
+	else {
+		TPS65185_REG_SET(VCOM2,VCOM8,0);
 	}
 	TPS65185_REG_SET(VCOM1,ALL,(unsigned char)wVCOM_val);
 	
@@ -1563,14 +1803,79 @@ int tps65185_vcom_kickback_measurement(int *O_piVCOM_mv)
 }
 
 
+int tps65185_ONOFF(int iIsON)
+{
+	int iRet=0;
+
+	if(!giIsTPS65185_turnoff_EP3V3) {
+		return 1;
+	}
+
+	if(iIsON) {
+		// Turn on the TPS65185 power .
+		 
+		//gpio_free(GPIO_TPS65185_SDL);
+		//gpio_free(GPIO_TPS65185_SDA);
+
+		//mxc_iomux_v3_setup_pad(MX50_PAD_I2C2_SCL__I2C2_SCL);
+		//mxc_iomux_v3_setup_pad(MX50_PAD_I2C2_SDA__I2C2_SDA);
+
+		//gpio_direction_output(GPIO_TPS65185_VCOMCTRL, 1);
+
+		gpio_direction_output(GPIO_TPS65185_VIN, 1);
+
+		mxc_iomux_v3_setup_pad(GPIO_TPS65185_PWRGOOD_INT_PADCFG); // POWERGOOD .
+		mxc_iomux_v3_setup_pad(GPIO_TPS65185_INT_PADCFG); // EP_INT
+		gpio_direction_input(GPIO_TPS65185_PWRGOOD);
+		gpio_direction_input(GPIO_TPS65185_INT);
+
+		mdelay(5);
+	}
+	else {
+		// Cut off the TPS65185 power .
+		//
+		mxc_iomux_v3_setup_pad(GPIO_TPS65185_PWRGOOD_GPIO_PADCFG); // POWERGOOD
+		mxc_iomux_v3_setup_pad(GPIO_TPS65185_INT_GPIO_PADCFG); // EP_INT
+		//udelay(50);
+		//mxc_iomux_v3_setup_pad(MX50_PAD_I2C2_SCL__GPIO_6_20);
+		//gpio_request(GPIO_TPS65185_SDL, "tps65185_i2c_sdl");
+		//gpio_direction_input (GPIO_TPS65185_SDL);
+		//gpio_direction_output(GPIO_TPS65185_SDL, 1);
+
+		//mxc_iomux_v3_setup_pad(MX50_PAD_I2C2_SDA__GPIO_6_21);
+		//gpio_request(GPIO_TPS65185_SDA, "tps65185_i2c_sda");
+		//gpio_direction_input (GPIO_TPS65185_SDL);
+		//gpio_direction_output(GPIO_TPS65185_SDA, 1);
+
+
+		gpio_direction_output(GPIO_TPS65185_PWRUP, 0);
+		gpio_direction_output(GPIO_TPS65185_WAKEUP, 0);
+
+		gpio_direction_output(GPIO_TPS65185_PWRGOOD, 0);
+		gpio_direction_output(GPIO_TPS65185_INT, 0);
+
+		//gpio_direction_output(GPIO_TPS65185_VCOMCTRL, 0);
+
+		gpio_direction_output(GPIO_TPS65185_VIN, 0);
+
+		down(&gtTPS65185_DataA[0].chmod_lock);
+		gtTPS65185_DataA[0].dwCurrent_mode=TPS65185_MODE_SLEEP;
+		up(&gtTPS65185_DataA[0].chmod_lock);
+	}
+
+	return iRet;
+}
+
+
 #define TPS65185_SUSPEND		1	
 
-void tps65185_suspend(void)
+int tps65185_suspend(void)
 {
 #ifdef TPS65185_SUSPEND //[
 	unsigned long dwTPS65185_mode;
 	unsigned char bVal;
 	int irq;
+	int iRet = 0;
 	
 	dbgENTER();
 
@@ -1579,96 +1884,88 @@ void tps65185_suspend(void)
 	flush_workqueue(tps65185_pwrgood_workqueue);
 	flush_workqueue(tps65185_int_workqueue);
 
-	tps65185_wait_panel_poweroff();
 
-	bVal=0;
-	TPS65185_REG_SET(INT_EN1,ALL,bVal);
-	TPS65185_REG_SET(INT_EN2,ALL,bVal);
-	TPS65185_REG_SET(ENABLE,ALL,bVal);
+
+	
+	//tps65185_wait_panel_poweroff();
+
+	//bVal=0;
+	//TPS65185_REG_SET(INT_EN1,ALL,bVal);
+	//TPS65185_REG_SET(INT_EN2,ALL,bVal);
+	//TPS65185_REG_SET(ENABLE,ALL,bVal);
 #ifdef TPS65185_PWR_ONOFF_INT//[
 
 	irq = gpio_to_irq(GPIO_TPS65185_INT);
-	disable_irq(irq);
+	free_irq(irq,0);
+	//disable_irq(irq);
 	irq = gpio_to_irq(GPIO_TPS65185_PWRGOOD);
-	disable_irq(irq);
+	free_irq(irq,0);
+	//disable_irq(irq);
 
 #endif //] TPS65185_PWR_ONOFF_INT
 
 
 	dwTPS65185_mode = TPS65185_MODE_SLEEP;
 	tps65185_chg_mode(&dwTPS65185_mode,1);
-
+	if(delayed_work_pending(&gtPwrdwn_work_param.pwrdwn_work)) {
+		DBG_MSG("pmic pwrdwn delay work pending !!\n");
+		//flush_delayed_work(&gtPwrdwn_work_param.pwrdwn_work);
+		tps65185_resume();
+		return -1;
+	}
 
 
 #if 0
-
-	//udelay(50);
-	mxc_iomux_v3_setup_pad(MX50_PAD_I2C2_SCL__GPIO_6_20);
-	gpio_request(GPIO_TPS65185_SDL, "tps65185_i2c_sdl");
-	//gpio_direction_input (GPIO_TPS65185_SDL);
-	gpio_direction_output(GPIO_TPS65185_SDL, 1);
-
-	mxc_iomux_v3_setup_pad(MX50_PAD_I2C2_SDA__GPIO_6_21);
-	gpio_request(GPIO_TPS65185_SDA, "tps65185_i2c_sda");
-	//gpio_direction_input (GPIO_TPS65185_SDL);
-	gpio_direction_output(GPIO_TPS65185_SDA, 1);
-
-
-	//gpio_direction_output(GPIO_TPS65185_PWRUP, 0);
-	//gpio_direction_output(GPIO_TPS65185_WAKEUP, 0);
-
-	//gpio_direction_output(GPIO_TPS65185_PWRGOOD, 0);
-	//gpio_direction_output(GPIO_TPS65185_INT, 0);
-
-	//gpio_direction_output(GPIO_TPS65185_VCOMCTRL, 0);
-
-	//gpio_direction_output(GPIO_TPS65185_VIN, 0);
+	if(gSleep_Mode_Suspend) {
+		DBG_MSG("%s() : sleep mode to trun off PMIC .\n",__FUNCTION__);
+		//tps65185_ONOFF(0);
+	}
 #endif
 
 	dbgLEAVE();
 #endif //]TPS65185_SUSPEND
+	return iRet;
 }
 
 void tps65185_resume(void)
 {
 #ifdef TPS65185_SUSPEND //[
 	unsigned long dwTPS65185_mode;
-	int irq;
 
 	dbgENTER();
 	
-#if 0
 
-	gpio_free(GPIO_TPS65185_SDL);
-	gpio_free(GPIO_TPS65185_SDA);
-
-	mxc_iomux_v3_setup_pad(MX50_PAD_I2C2_SCL__I2C2_SCL);
-	mxc_iomux_v3_setup_pad(MX50_PAD_I2C2_SDA__I2C2_SDA);
-
-	//gpio_direction_input(GPIO_TPS65185_PWRGOOD);
-	//gpio_direction_input(GPIO_TPS65185_INT);
-	
-
-	//gpio_direction_output(GPIO_TPS65185_VCOMCTRL, 1);
-
-	//gpio_direction_output(GPIO_TPS65185_VIN, 1);
-	
+#if 0	
+	if(gSleep_Mode_Suspend) {
+		DBG_MSG("%s() : resume from sleep mode to trun on PMIC .\n",__FUNCTION__);
+		//tps65185_ONOFF(1);
+	}	
 #endif
-
 
 	dwTPS65185_mode = TPS65185_MODE_STANDBY;
 	tps65185_chg_mode(&dwTPS65185_mode,1);
 
 #ifdef TPS65185_PWR_ONOFF_INT//[
+	{
+		int irq,iChk;
+		irq = gpio_to_irq(GPIO_TPS65185_INT);
+		//enable_irq(irq);
+		iChk = request_irq(irq, tps65185_int, 0, "tps65185_INT", 0);
+		if (iChk) {
+			pr_info("register TPS65185 interrupt failed\n");
+		}
 
-	irq = gpio_to_irq(GPIO_TPS65185_INT);
-	enable_irq(irq);
-	irq = gpio_to_irq(GPIO_TPS65185_PWRGOOD);
-	enable_irq(irq);
+		irq = gpio_to_irq(GPIO_TPS65185_PWRGOOD);
+		//enable_irq(irq);
+		iChk = request_irq(irq, tps65185_pwrgood_inthandler, 0, "tps65185_PWRGOOD", 0);
+		if (iChk) {
+			pr_info("register TPS65185 pwrgood interrupt failed\n");
+		}
+	}
 #endif //]TPS65185_PWR_ONOFF_INT
 
 
-	//tps65185_reg_init();
+	//tps65185_reg_init(1);
 
 	dbgLEAVE();
 #endif //]TPS65185_SUSPEND

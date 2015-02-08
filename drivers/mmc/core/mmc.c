@@ -208,6 +208,7 @@ static int mmc_read_ext_csd(struct mmc_card *card)
 	}
 
 	card->ext_csd.rev = ext_csd[EXT_CSD_REV];
+#if 0	// skip ext_csd version check. Joseph 20130422
 	if (card->ext_csd.rev > 5) {
 		printk(KERN_ERR "%s: unrecognised EXT_CSD structure "
 			"version %d\n", mmc_hostname(card->host),
@@ -215,6 +216,7 @@ static int mmc_read_ext_csd(struct mmc_card *card)
 		err = -EINVAL;
 		goto out;
 	}
+#endif
 
 	if (card->ext_csd.rev >= 2) {
 		card->ext_csd.sectors =

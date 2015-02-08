@@ -42,7 +42,9 @@ int tps65185_chg_mode(unsigned long *IO_pdwMode,int iIsWaitPwrOff);
 int tps65185_vcom_set(int I_iVCOM_mv,int iIsWriteToFlash);
 int tps65185_vcom_get(int *O_piVCOM_mv);
 int tps65185_vcom_kickback_measurement(int *O_piVCOM_mv);
-void tps65185_suspend(void);
+int tps65185_suspend(void);
 void tps65185_resume(void);
 
-#endif //]LK_LM75_H
+int tps65185_ONOFF(int iIsON);
+
+#endif //]LK_TPS65185_H

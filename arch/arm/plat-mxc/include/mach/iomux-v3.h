@@ -119,6 +119,22 @@ typedef u32 iomux_grp_cfg_t;
 
 #define IOMUX_CONFIG_SION		(0x1 << 4)
 
+
+
+typedef struct tagMXC_GPIO_CFGS {
+	iomux_v3_cfg_t	tPad_Cfg; // PAD config .
+	unsigned uiGPIO; // GPIO .
+	unsigned uiGPIO_num; // GPIO number .
+	unsigned uiGPIO_grp; // GPIO group number .
+	unsigned int uiIRQ_num;// IRQ number .
+	unsigned int uiIRQ_type; // IRQ type .
+	int iDirection_type; // 0:output ; 1:input ; 2:input interrupt .
+	int iInterruptWakeup; // 0:disable ; 1:enable .
+	char *sz_name; // gpio/irq name .
+} MXC_GPIO_CFGS;
+
+
+
 void mxc_iomux_set_pad_groups(iomux_grp_cfg_t pad_grp, int value);
 
 /*

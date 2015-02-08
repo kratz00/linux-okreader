@@ -23,10 +23,10 @@
 
 
 extern volatile NTX_HWCONFIG *gptHWCFG;
-extern void mxc_kpp_report_key(int isDown,__u16 wKeyCode);
+extern void ntx_report_key(int isDown,__u16 wKeyCode);
 extern int gIsCustomerUi;
 extern void power_key_int_function(void);
-extern void mxc_kpp_report_power(int isDown);
+extern void ntx_report_power(int isDown);
 
 #define GPIO_tle4913Q 	(4*32+25) /* GPIO_5_25 */
 static int tle4913Q_func(int iGPIOVal,unsigned uGPIO);
@@ -52,10 +52,10 @@ static int tle4913Q_func(int iGPIOVal,unsigned uGPIO)
 	DBG0_MSG("%s(%d): gpio%u,val=%d\n",__FILE__,__LINE__,uGPIO,iGPIOVal);
 	
 	if(gIsCustomerUi) {
-		mxc_kpp_report_key(iGPIOVal?0:1,KEY_F1);
+		ntx_report_key(iGPIOVal?0:1,KEY_F1);
 	}
 	else {
-		mxc_kpp_report_key(iGPIOVal?0:1,KEY_H);
+		ntx_report_key(iGPIOVal?0:1,KEY_H);
 	}
 	
 	return 0;
@@ -66,6 +66,10 @@ static int tle4913Q_func(int iGPIOVal,unsigned uGPIO)
 void tle4913_init(void)
 {
 	if(gptHWCFG&&1==gptHWCFG->m_val.bHallSensor) {
+		if (35==gptHWCFG->m_val.bPCB) {
+			gtTLE4913_GPIO_data.tPADCtrl = MX50_PAD_SD2_D7__GPIO_5_15;
+			gtTLE4913_GPIO_data.uGPIO = (4*32+15); /* GPIO_5_15 */			
+		}
 		gpiofn_register(&gtTLE4913_GPIO_data);
 	}
 	else {

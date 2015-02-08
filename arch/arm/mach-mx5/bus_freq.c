@@ -313,6 +313,7 @@ void enter_lpapm_mode_mx53()
 	u32 reg;
 	struct timespec nstimeofday;
 	struct timespec curtime;
+	unsigned long flags;
 
 	/* TBD: Reduce DDR frequency for DDR2 */
 	/* if (mx53_ddr_type == DDR_TYPE_DDR2) {
@@ -669,21 +670,15 @@ void exit_lpapm_mode_mx53()
 	u32 reg;
 	struct timespec nstimeofday;
 	struct timespec curtime;
-
+	unsigned long flags;
 
 	/* move cpu clk to pll1 */
-	reg = __raw_readl(MXC_CCM_CDHIPR);
-	while (1) {
-		if ((reg & MXC_CCM_CDHIPR_ARM_PODF_BUSY) == 0) {
-			__raw_writel(cpu_podf & 0x7, MXC_CCM_CACRR);
-			break;
-		} else {
-			reg = __raw_readl(MXC_CCM_CDHIPR);
-			printk(KERN_DEBUG "ARM_PODF still in busy!!!!\n");
-		}
-	}
+	//spin_lock_irqsave(&freq_lock, flags);
+	__raw_writel(cpu_podf & 0x7, MXC_CCM_CACRR);
+	while (__raw_readl(MXC_CCM_CDHIPR) & MXC_CCM_CDHIPR_ARM_PODF_BUSY)
+		;
 	clk_set_parent(pll1_sw_clk, pll1);
-
+	//spin_unlock_irqrestore(&freq_lock, flags);
 
 	/* ahb = 400/3, axi_b = 400/2, axi_a = 400*/
 	reg = __raw_readl(MXC_CCM_CBCDR);

@@ -41,6 +41,8 @@
 
 #include "pmic.h"
 
+#include "ntx_hwconfig.h"
+
 #define MC13892_GENERATION_ID_LSH	6
 #define MC13892_IC_ID_LSH		13
 
@@ -67,6 +69,8 @@ extern irqreturn_t pmic_irq_handler(int irq, void *dev_id);
 extern int check_hardware_name(void);
 
 static u16 msp_id;
+
+extern volatile NTX_HWCONFIG *gptHWCFG;
 
 /*
  * Platform device structure for PMIC client drivers
@@ -134,6 +138,7 @@ static void pmic_pdev_unregister(void)
 
 static int __devinit is_chip_onboard(struct i2c_client *client)
 {
+#if 0
 	unsigned int ret = 0;
 
 	/*bind the right device to the driver */
@@ -148,7 +153,7 @@ static int __devinit is_chip_onboard(struct i2c_client *client)
 			MC13892_GEN_ID_VALUE);
 		return -1;
 	}
-
+#endif
 	return 0;
 }
 
@@ -228,7 +233,9 @@ static int __devinit pmic_probe(struct i2c_client *client,
 	if (mc13892 == NULL)
 		return -ENOMEM;
 
+#if 0
 	i2c_set_clientdata(client, mc13892);
+#endif
 	mc13892->dev = &client->dev;
 	mc13892->i2c_client = client;
 
@@ -242,6 +249,7 @@ static int __devinit pmic_probe(struct i2c_client *client,
 	/* Initialize GPIO for PMIC Interrupt */
 	gpio_pmic_active();
 
+#if 0
 	/* Get the PMIC Version */
 	pmic_get_revision(&mxc_pmic_version);
 	if (mxc_pmic_version.revision < 0) {
@@ -253,6 +261,7 @@ static int __devinit pmic_probe(struct i2c_client *client,
 			"Detected pmic core IC version number is %d\n",
 			mxc_pmic_version.revision);
 	}
+#endif
 
 	/* Initialize the PMIC parameters */
 	ret = pmic_init_registers();
@@ -583,7 +592,6 @@ static int __devinit msp430_probe(struct i2c_client *client,
 	} else {
 		msp430_write(0x30,0xFF00);	// Jospeh 100108 // start ADC
 	}	
-
 	return PMIC_SUCCESS;
 }
 
@@ -703,8 +711,8 @@ int msp430_battery(void) {
 }
 EXPORT_SYMBOL_GPL(msp430_battery);
 
-void msp430_gettime(struct rtc_time *tm) {
-
+void msp430_gettime(struct rtc_time *tm) 
+{
 	unsigned long t;
         unsigned int tmp;
 
@@ -783,13 +791,13 @@ void msp430_setalarm(struct rtc_wkalrm *alrm) {
 		rtc_tm_to_time(&now_tm, &now);
 		rtc_tm_to_time(&alrm->time, &time);
 		g_alarm_enabled = alrm->enabled;
+		gAlarmTime=time;
 
 		if(alrm->enabled && (time > now)) {
 			int interval = time-now;
 			printk ("[%s-%d] alarm %d\n",__func__,__LINE__,interval);
 			msp430_write (0x1B, (interval&0xFF00));
 			msp430_write (0x1C, ((interval<<8)& 0xFF00));
-			gAlarmTime=1;
 		}
 		else {
 			int tmp = msp430_read (0x60);
@@ -799,7 +807,6 @@ void msp430_setalarm(struct rtc_wkalrm *alrm) {
 			}
 			msp430_write (0x1B, 0);
 			msp430_write (0x1C, 0);
-			gAlarmTime=0;
 		}
 	}
 

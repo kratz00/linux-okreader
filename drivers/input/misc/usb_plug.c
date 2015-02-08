@@ -25,7 +25,23 @@ extern void set_pmic_dc_charger_state(int dccharger);
 
 static void usb_plug_handler(void *dummy)
 {
-	int plugged = mxc_usbplug->get_status();
+	
+	int plugged ;
+
+
+	if(0==mxc_usbplug) {
+		printk(KERN_ERR "%s(%d):skip %s() when mxc_usbplug not exist !\n",
+				__FILE__,__LINE__,__FUNCTION__);
+		return ;
+	}
+	if(0==mxc_usbplug->ddev) {
+		printk(KERN_ERR "%s(%d):skip %s() when mxc_usbplug->ddev not exist !\n",
+				__FILE__,__LINE__,__FUNCTION__);
+		return ;
+	}
+
+
+	plugged = mxc_usbplug->get_status();
 	if (plugged) {
 		int charger;
 		int ret;
@@ -61,6 +77,7 @@ static void usb_plug_handler(void *dummy)
 		set_pmic_dc_charger_state(0);
 		pr_info("usb unplugged\n");
 	}
+
 }
 
 static void single_shot_worker(struct work_struct *work)

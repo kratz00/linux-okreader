@@ -57,3 +57,6 @@ obj-$(CONFIG_TOUCHSCREEN_MAX11801)	+= max11801_ts.o
 obj-$(CONFIG_TOUCHSCREEN_ZFORCE)	+= zforce_i2c.o
 obj-$(CONFIG_TOUCHSCREEN_ELAN_TOUCH)	+= elan_touch_i2c.o
 obj-$(CONFIG_TOUCHSCREEN_IT7260_TOUCH)	+= it7260_touch_i2c.o
+obj-$(CONFIG_TOUCHSCREEN_MSP430)	+= msp430_i2c.o
+obj-y	+= mma7660.o
+

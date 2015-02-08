@@ -63,7 +63,11 @@ int mxc_epdc_fb_check_update_complete(u32 update_marker, struct fb_info *info)
 	 */
 
 	/* Grab queue lock to protect access to marker list */
+#ifdef USE_QUEUESPIN_LOCK//[
 	spin_lock_irqsave(&fb_data->queue_lock, flags);
+#else //][!USE_QUEUESPIN_LOCK
+	mutex_lock(&fb_data->queue_mutex);
+#endif //] USE_QUEUESPIN_LOCK
 
 	list_for_each_entry_safe(next_marker, temp,
 		&fb_data->full_marker_list, full_list) {
@@ -78,7 +82,11 @@ int mxc_epdc_fb_check_update_complete(u32 update_marker, struct fb_info *info)
 		}
 	}
 
+#ifdef USE_QUEUESPIN_LOCK//[
 	spin_unlock_irqrestore(&fb_data->queue_lock, flags);
+#else//][!USE_QUEUESPIN_LOCK
+	mutex_unlock(&fb_data->queue_mutex);
+#endif //]USE_QUEUESPIN_LOCK
 
 	/*
 	 * If marker not found, it has either been signalled already
@@ -115,8 +123,11 @@ static void k_fake_s1d13522_progress_start(void)
 	//fake_s1d13522_progress_start(gptDC);
 }
 
-static int32_t k_fake_s1d13522_ioctl(unsigned int cmd,unsigned long arg)
+
+static int k_fake_s1d13522_wait_inited(void)
 {
+	int iRet=0;
+
 	if(0==giIsInited) {
 		if(in_interrupt()) {
 			printk("[%s]:skip before init (interrupt).",__FUNCTION__);
@@ -126,7 +137,12 @@ static int32_t k_fake_s1d13522_ioctl(unsigned int cmd,unsigned long arg)
 			wait_for_completion(&mxc_epdc_fake13522_inited);
 		}
 	}
-	
+	return iRet;
+}
+
+static int32_t k_fake_s1d13522_ioctl(unsigned int cmd,unsigned long arg)
+{
+	//k_fake_s1d13522_wait_inited();
 	return fake_s1d13522_ioctl(cmd,arg,gptDC);
 }
 
@@ -308,12 +324,15 @@ static int k_set_temperature(struct fb_info *info)
 	
 	static int giLastTemprature = DEFAULT_TEMP;
 	
+	
 
 	//printk("%s(),timeout_tick=%u,current_tick=%u\n",__FUNCTION__,
 	//		gdwLastUpdateJiffies,jiffies);
 	
 	if(0==gdwLastUpdateJiffies||time_after(jiffies,gdwLastUpdateJiffies)) {
 		
+		gdwLastUpdateJiffies = jiffies+(60*HZ);
+
 		if(gptHWCFG&&6==gptHWCFG->m_val.bDisplayCtrl) {
 			// imx508 + tps16585 .
 			iChk = tps65185_get_temperature(&giLastTemprature);
@@ -324,7 +343,9 @@ static int k_set_temperature(struct fb_info *info)
 		
 		if(iChk>=0) {
 			iChk = mxc_epdc_fb_set_temperature(giLastTemprature,info);
-			gdwLastUpdateJiffies = jiffies+(60*HZ);
+		}
+		else {
+			gdwLastUpdateJiffies = jiffies;
 		}
 	}
 	return giLastTemprature;
@@ -391,6 +412,9 @@ static int k_get_vcom(int *O_piVCOM_get_mV)
 
 static int k_fake_s1d13522_init(unsigned char *pbInitDCbuf)
 {
+
+	int iChk;
+	
 	
 	gptDC = fake_s1d13522_initEx3(default_bpp,g_fb_data->info.screen_base,g_fb_data->info.var.xres,g_fb_data->info.var.yres, \
 				ALIGN(g_fb_data->info.var.xres,32),ALIGN(g_fb_data->info.var.yres,128));
@@ -433,8 +457,41 @@ static int k_fake_s1d13522_init(unsigned char *pbInitDCbuf)
 		// printk("%s(%d):%s,Display=%s\n",__FILE__,__LINE__,__FUNCTION__,
 		//	NtxHwCfg_GetCfgFldStrVal(gptHWCFG,HWCFG_FLDIDX_DisplayCtrl));
 		if(gptHWCFG&&6==gptHWCFG->m_val.bDisplayCtrl) {
+			int iPortA[2]={-1,-1} ;
+			int i;
 			// imx508 + tps16585 .
-			tps65185_init(2,EPDTIMING_V110);
+
+			if(28==gptHWCFG->m_val.bPCB) {
+				// E606C2B3 PMIC in Channel 3. before E606C2B3 in Channel 2.
+
+#if 0 //[
+				// <E606C2B3
+				iPortA[0] = 2;
+				iPortA[1] = -1;
+#else //][
+				// >=E606C2B3 .
+				iPortA[0] = 1;
+				iPortA[1] = 2;
+#endif//]
+
+			}
+			else {
+				iPortA[0] = 2;
+			}
+			
+			for(i=0;i<2;i++) {
+				if(iPortA[i]>0) {
+					//printk("%s(),init TPS65185 @ i2c%d\n",__FUNCTION__,iPortA[i]);
+					iChk = tps65185_init(iPortA[i],EPDTIMING_V110);
+					if(iChk>=0) {
+						break;
+					}
+					else {
+						WARNING_MSG("%s(),init @ i2c%d fail !\n",__FUNCTION__,iPortA[i]);
+					}
+				}
+			}
+
 		}
 		else {
 			if ((4 == check_hardware_name()) || (3 == check_hardware_name())) {
@@ -474,9 +531,23 @@ static int k_fake_s1d13522_init(unsigned char *pbInitDCbuf)
 			}	
 			#endif	
 			
-			if(gptHWCFG&&1==gptHWCFG->m_val.bDisplayResolution) {
-				ilogo_width = 1024 ;
-				ilogo_height = 758 ;
+			if(gptHWCFG) {
+				if(1==gptHWCFG->m_val.bDisplayResolution) {
+					ilogo_width = 1024 ;
+					ilogo_height = 758 ;
+				}
+				else if(2==gptHWCFG->m_val.bDisplayResolution) {
+					ilogo_width = 1024 ;
+					ilogo_height = 768 ;
+				}
+				else if(3==gptHWCFG->m_val.bDisplayResolution) {
+					ilogo_width = 1440 ;
+					ilogo_height = 1080 ;
+				}
+				else {
+					ilogo_width = 800 ;
+					ilogo_height = 600 ;
+				}
 			}
 			else {
 				ilogo_width = 800 ;
